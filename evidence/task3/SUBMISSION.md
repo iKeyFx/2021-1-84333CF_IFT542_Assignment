@@ -127,7 +127,7 @@ npm run build && npm start     # for 19 (strict CSP + HSTS)
 | 18 | `18-ssrf-blocked.png` | `node tests/ssrf-demo.mjs` | `HTTP status of preview call: 403`, `URL not allowed`, and the `[SSRF BLOCKED]` line |
 | 19 | `19-security-headers.png` | `npm run build && npm start`, then `curl -I http://127.0.0.1:3000/login` | CSP with `'nonce-…'` and **no `unsafe-`**, plus HSTS, nosniff, `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy` |
 | 20 | `20-admin-rotated.png` | Two login attempts as `admin@campus.local` | rotated password → `200 … "role":"admin"`; `admin123` → `401 {"error":"Invalid email or password"}` |
-| 21 | `21-security-logs.png` | Trigger a failed login, a malformed email, and a student POST to an admin endpoint; screenshot the server's stdout | Three JSON lines: `auth.login.failed`, `validation.rejected`, `authz.denied` — with `email` shown **masked** as `a***@campus.local` |
+| 21 | `21-security-logs.png` | **Two terminals** — see *Capturing 21* below. T1: `npm run dev`. T2: `node evidence/task3/capture-security-logs.mjs`. Screenshot **T1**. | Three JSON lines: `auth.login.failed`, `validation.rejected`, `authz.denied` — with `email` shown **masked** as `a***@campus.local` |
 | 22 | `22-tests-green.png` | `npm test` | `Test Files 11 passed (11)` and `Tests 182 passed \| 1 skipped (183)` |
 | 23 | `23-ir-revocation.png` | `npm run ir:status`, then `npm run ir:revoke-sessions -- --all --incident INC-2026-001 --yes`, then `ir:status` again | Sessions listed → `REVOKED n session(s)` → `TOTAL: 0`. Ideally include the `307` from a revoked cookie |
 | 24 | `24-append-only.png` | `npm run ir:audit-log -- --verify` | The full `[PASS]` matrix, `42501` on UPDATE / DELETE / **zero-row DELETE** / TRUNCATE, and `ALL 7 CHECKS PASSED` |
@@ -195,6 +195,69 @@ IR_OPERATOR="responder@ift542-lab" npm run ir:status
 Not sensitive, for the avoidance of doubt: the CSRF token's HMAC (computed with the *documented*
 development secret), the rotated admin password in `README.md` (a documented dummy), and the CSP
 nonce (single-use, already spent).
+
+### Capturing 21 — the log screenshot, step by step
+
+The log lines are printed by the **server**, not by whatever you run to trigger them. So you need
+two terminals, and you screenshot the *server* one.
+
+**Terminal 1 — the server. This is the one you screenshot.**
+
+```bash
+npm run dev
+```
+
+If Next's compile output makes the lines hard to see, filter it instead — this shows *only* the
+security events, which makes a much cleaner screenshot:
+
+```bash
+npm run dev 2>&1 | grep --line-buffered '"event":'
+```
+
+**Terminal 2 — trigger one of each event.**
+
+```bash
+node evidence/task3/capture-security-logs.mjs
+```
+
+**Then screenshot Terminal 1.** Three lines, newest last:
+
+```json
+{"ts":"…","level":"warn","event":"auth.login.failed","actor":{"type":"anonymous"},
+ "outcome":"denied","ip":"198.18.100.11","method":"POST","path":"/api/login",
+ "email":"a***@campus.local","reason":"bad-password"}
+
+{"ts":"…","level":"warn","event":"validation.rejected","actor":{"type":"anonymous"},
+ "outcome":"denied","ip":"198.18.100.12","method":"POST","path":"/api/login",
+ "reason":"email-format"}
+
+{"ts":"…","level":"warn","event":"authz.denied","actor":{"type":"user","profile_id":1,
+ "role":"student"},"outcome":"denied","ip":"127.0.0.1","method":"POST",
+ "path":"/api/admin/courses","reason":"not-admin","required_role":"admin"}
+```
+
+**Why a script rather than "just trigger the three events".** The third one is not obvious.
+`authz.denied` with `reason: "not-admin"` needs a **logged-in student** posting to an admin
+endpoint. Posting anonymously to the same URL logs `reason: "no-session"` instead — a different
+event, and the dull one. That distinction is the entire point of the log line: `currentAdmin()`
+used to return `null` for both cases, collapsing the only one worth alerting on. The script logs
+in first so you get `not-admin`.
+
+**What to point out in the report:**
+
+| | |
+|---|---|
+| **WHO** | `actor` (`profile_id` + `role`, or `{"type":"anonymous"}`) and `ip` |
+| **WHAT** | `event` + `method` + `path` + `outcome` + `reason` |
+| **WHEN** | `ts`, ISO-8601 UTC |
+
+And what is **absent**: no password, no digest, no session id, no CSRF token. Those keys are
+dropped inside `src/lib/logger.ts`, so a caller cannot leak one even by passing it explicitly —
+"remember not to log the password" is not a control. The email is masked to `a***@campus.local`.
+
+Worth noting in the write-up: steps 1 and 2 returned the **same generic 401** to the client. The
+reason they differ exists only in the log. That is the anti-enumeration control and the logging
+control doing their separate jobs.
 
 ### Screenshot 16 — why the browser shows 303, not 403
 

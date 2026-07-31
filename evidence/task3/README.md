@@ -96,6 +96,19 @@ git diff v1-hardened-task2 v2-hardened-task3
 
 ---
 
+## Capture scripts
+
+Two deliverables are awkward to capture by hand, so each has a script. Both are read-only
+demonstrations against localhost; neither is attack tooling.
+
+| Script | Captures | Why it exists |
+|---|---|---|
+| `node evidence/task3/capture-security-logs.mjs` | Screenshot 21 | Triggers one of each required event. The `authz.denied` case needs a **logged-in student** posting to an admin endpoint — anonymous logs `no-session` instead, which is the wrong event |
+| `node evidence/task3/capture-csrf-layers.mjs` | Screenshot 16b | Forces the session cookie past `SameSite` so the Origin and token layers can each be seen failing on their own. A browser cannot show them — it is stopped by `SameSite` first |
+
+For 21 you need two terminals: `npm run dev` in one (screenshot **that** one), the script in the
+other. See `SUBMISSION.md` → *Capturing 21*.
+
 ## Regression check — Task 1 and Task 2 must stay intact
 
 - `node tests/sqli-login.mjs` → `[NO BYPASS]` (exit 1).
