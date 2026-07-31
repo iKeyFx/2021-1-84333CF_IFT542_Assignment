@@ -34,8 +34,8 @@ if (res.ok && data.ok) {
     `\n[BYPASS CONFIRMED] Logged in as ${data.user?.email} (role=${data.user?.role}) ` +
       "with no valid password — the login query is injectable."
   );
-  process.exit(0);
+  process.exitCode = 0;
 } else {
   console.log("\n[NO BYPASS] The injection did not authenticate (is the DB seeded?).");
-  process.exit(1);
+  process.exitCode = 1;
 }

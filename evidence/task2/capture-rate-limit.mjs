@@ -65,5 +65,5 @@ async function main() {
 main().catch((err) => {
   console.error("\nCapture failed:", err.message);
   console.error("Is the app running?  npm run dev");
-  process.exit(1);
+  process.exitCode = 1;
 });

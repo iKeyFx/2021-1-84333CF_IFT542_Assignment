@@ -30,7 +30,9 @@ const jar = new Map(
 );
 if (!jar.has("sid")) {
   console.error("Could not obtain admin session (is the DB seeded / server up?).");
-  process.exit(1);
+  process.exitCode = 1;
+  // Halt without process.exit() — see the note at the foot of this file.
+  throw new Error("no admin session");
 }
 console.log("Logged in as admin; session cookie acquired.");
 
@@ -74,14 +76,20 @@ if (data.ok) {
     "\n[SSRF CONFIRMED] The server followed a loopback URL and returned its body — " +
       "no host/scheme/IP restrictions are applied. Point this at any internal service to read it."
   );
-  process.exit(0);
+  process.exitCode = 0;
+} else {
+  // [FIXED — Task 3] Expected outcome on the hardened build.
+  console.log(
+    "\n[SSRF BLOCKED] The server refused to fetch the loopback URL. " +
+      "src/lib/url-guard.ts rejected it before any request left the process; the " +
+      "specific reason is in the server log only, since the reason itself would " +
+      "be an internal-network oracle."
+  );
+  process.exitCode = 1;
 }
 
-// [FIXED — Task 3] Expected outcome on the hardened build.
-console.log(
-  "\n[SSRF BLOCKED] The server refused to fetch the loopback URL. " +
-    "src/lib/url-guard.ts rejected it before any request left the process; the " +
-    "specific reason is in the server log only, since the reason itself would " +
-    "be an internal-network oracle."
-);
-process.exit(1);
+// NOTE: these scripts set `process.exitCode` instead of calling process.exit().
+// On Windows, process.exit() while an undici keep-alive socket is still closing
+// trips a libuv assertion (`!(handle->flags & UV_HANDLE_CLOSING)`) and aborts
+// with exit 127, which corrupts the captured evidence. Setting exitCode lets the
+// event loop drain and produces the same status cleanly.

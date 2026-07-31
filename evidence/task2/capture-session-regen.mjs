@@ -73,12 +73,12 @@ async function main() {
   );
 
   await sql.end();
-  process.exit(ok ? 0 : 1);
+  process.exitCode = ok ? 0 : 1;
 }
 
 main().catch(async (err) => {
   console.error("\nCapture failed:", err.message);
   console.error("Is the app running (npm run dev) and the DB seeded (npm run db:reset)?");
   await sql.end({ timeout: 1 }).catch(() => {});
-  process.exit(1);
+  process.exitCode = 1;
 });

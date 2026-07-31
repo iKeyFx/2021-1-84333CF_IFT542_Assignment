@@ -174,3 +174,143 @@ export async function loginRaw(
 export function db() {
   return postgres(DATABASE_URL, { max: 1, onnotice: () => {} });
 }
+
+// ---------------------------------------------------------------------------
+//  Task 3 helpers: authenticated sessions with CSRF tokens
+// ---------------------------------------------------------------------------
+
+export type Session = {
+  /** Serialised Cookie header carrying both `sid` and `csrf`. */
+  cookie: string;
+  /** The anti-CSRF token, ready to send as a field or header. */
+  csrf: string;
+  sid: string;
+};
+
+function mergeSetCookie(jar: Map<string, string>, res: Response): void {
+  for (const raw of res.headers.getSetCookie?.() ?? []) {
+    const kv = raw.split(";")[0];
+    const i = kv.indexOf("=");
+    jar.set(kv.slice(0, i), kv.slice(i + 1));
+  }
+}
+
+const serialise = (jar: Map<string, string>) =>
+  [...jar].map(([k, v]) => `${k}=${v}`).join("; ");
+
+/**
+ * Log in and pick up a CSRF token.
+ *
+ * The token is issued by middleware on a PAGE response, not by /api/login
+ * (middleware deliberately does not match /api), so this makes a second request
+ * to a page to collect it — exactly what a browser does.
+ */
+export async function authenticate(
+  email: string,
+  password: string,
+  ip: string,
+  page = "/dashboard"
+): Promise<Session> {
+  const jar = new Map<string, string>();
+
+  const login = await fetch(`${BASE}/api/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Forwarded-For": ip },
+    body: JSON.stringify({ email, password }),
+    redirect: "manual",
+  });
+  mergeSetCookie(jar, login);
+
+  if (!jar.has("sid")) {
+    throw new Error(`authenticate(${email}) failed: HTTP ${login.status}`);
+  }
+
+  const pageRes = await fetch(`${BASE}${page}`, {
+    headers: { Cookie: serialise(jar), "X-Forwarded-For": ip },
+  });
+  mergeSetCookie(jar, pageRes);
+
+  return {
+    cookie: serialise(jar),
+    csrf: decodeURIComponent(jar.get("csrf") ?? ""),
+    sid: jar.get("sid") ?? "",
+  };
+}
+
+/** Fetch a CSRF token without logging in (anonymous visitor). */
+export async function anonymousCsrf(page = "/login"): Promise<Session> {
+  const jar = new Map<string, string>();
+  const res = await fetch(`${BASE}${page}`);
+  mergeSetCookie(jar, res);
+  return {
+    cookie: serialise(jar),
+    csrf: decodeURIComponent(jar.get("csrf") ?? ""),
+    sid: "",
+  };
+}
+
+/** POST a urlencoded form, with control over the token and Origin. */
+export async function postForm(
+  path: string,
+  fields: Record<string, string>,
+  opts: { session: Session; csrf?: string | null; origin?: string | null }
+): Promise<{ status: number; body: string; location: string }> {
+  const token = opts.csrf === undefined ? opts.session.csrf : opts.csrf;
+  const params = new URLSearchParams(fields);
+  if (token !== null) params.set("_csrf", token);
+
+  const headers: Record<string, string> = {
+    "Content-Type": "application/x-www-form-urlencoded",
+    Cookie: opts.session.cookie,
+  };
+  if (opts.origin) headers["Origin"] = opts.origin;
+
+  const res = await fetch(`${BASE}${path}`, {
+    method: "POST",
+    headers,
+    body: params,
+    redirect: "manual",
+  });
+  // A 303 has an EMPTY body — the outcome is in the Location header.
+  return {
+    status: res.status,
+    body: await res.text(),
+    location: res.headers.get("location") ?? "",
+  };
+}
+
+/** POST JSON with the token in the x-csrf-token header. */
+export async function postJson(
+  path: string,
+  payload: unknown,
+  opts: { session: Session; csrf?: string | null; origin?: string | null }
+): Promise<{ status: number; body: any }> {
+  const token = opts.csrf === undefined ? opts.session.csrf : opts.csrf;
+
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    Cookie: opts.session.cookie,
+  };
+  if (token !== null) headers["x-csrf-token"] = token;
+  if (opts.origin) headers["Origin"] = opts.origin;
+
+  const res = await fetch(`${BASE}${path}`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(payload),
+    redirect: "manual",
+  });
+  return { status: res.status, body: await res.json().catch(() => null) };
+}
+
+/** GET a page with a session, returning the raw HTML. */
+export async function getPage(
+  path: string,
+  session?: Session
+): Promise<{ status: number; html: string; headers: Headers }> {
+  const res = await fetch(`${BASE}${path}`, {
+    headers: session ? { Cookie: session.cookie } : {},
+    redirect: "manual",
+  });
+  return { status: res.status, html: await res.text(), headers: res.headers };
+}
