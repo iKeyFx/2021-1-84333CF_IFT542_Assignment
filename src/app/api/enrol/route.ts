@@ -10,6 +10,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { sql } from "@/lib/db";
 import { getSessionUser } from "@/lib/session";
 import { requireCsrf } from "@/lib/csrf";
+import { seeOther } from "@/lib/redirect";
 import { logger, clientIpOf } from "@/lib/logger";
 
 export async function POST(req: NextRequest) {
@@ -17,7 +18,7 @@ export async function POST(req: NextRequest) {
   const user = await getSessionUser();
   if (!user) {
     logger.authzDenied({ ip, method: "POST", path: "/api/enrol", actor: null, reason: "no-session" });
-    return NextResponse.redirect(new URL("/login", req.url), { status: 303 });
+    return seeOther("/login");
   }
 
   const actor = { profile_id: user.id, role: user.role };
@@ -41,5 +42,5 @@ export async function POST(req: NextRequest) {
     `;
   }
 
-  return NextResponse.redirect(new URL("/courses?enrolled=1", req.url), { status: 303 });
+  return seeOther("/courses?enrolled=1");
 }

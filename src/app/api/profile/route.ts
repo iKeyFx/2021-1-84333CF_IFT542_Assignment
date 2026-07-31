@@ -18,6 +18,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { sql } from "@/lib/db";
 import { getSessionUser } from "@/lib/session";
 import { requireCsrf } from "@/lib/csrf";
+import { seeOther } from "@/lib/redirect";
 import { validateProfile } from "@/lib/validate";
 import { logger, clientIpOf } from "@/lib/logger";
 
@@ -29,7 +30,7 @@ export async function POST(req: NextRequest) {
 
   if (!user) {
     logger.authzDenied({ ip, method: "POST", path: PATH, actor: null, reason: "no-session" });
-    return NextResponse.redirect(new URL("/login", req.url), { status: 303 });
+    return seeOther("/login");
   }
 
   const actor = { profile_id: user.id, role: user.role };
@@ -47,7 +48,7 @@ export async function POST(req: NextRequest) {
 
   if (!input.ok) {
     logger.validationRejected({ ip, method: "POST", path: PATH, actor, reason: input.reason });
-    return NextResponse.redirect(new URL("/profile?error=invalid", req.url), { status: 303 });
+    return seeOther("/profile?error=invalid");
   }
 
   await sql`
@@ -56,5 +57,5 @@ export async function POST(req: NextRequest) {
     WHERE id = ${user.id}
   `;
 
-  return NextResponse.redirect(new URL("/profile?saved=1", req.url), { status: 303 });
+  return seeOther("/profile?saved=1");
 }

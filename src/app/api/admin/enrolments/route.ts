@@ -7,6 +7,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { sql } from "@/lib/db";
 import { currentAdmin } from "@/lib/auth";
 import { requireCsrf } from "@/lib/csrf";
+import { seeOther } from "@/lib/redirect";
 import { logger, clientIpOf } from "@/lib/logger";
 
 export async function POST(req: NextRequest) {
@@ -15,7 +16,7 @@ export async function POST(req: NextRequest) {
   // an anonymous caller apart from a logged-in non-admin.
   const admin = await currentAdmin({ ip, method: "POST", path: "/api/admin/enrolments" });
   if (!admin) {
-    return NextResponse.redirect(new URL("/login", req.url), { status: 303 });
+    return seeOther("/login");
   }
 
   const actor = { profile_id: admin.id, role: admin.role };
@@ -34,5 +35,5 @@ export async function POST(req: NextRequest) {
     await sql`DELETE FROM enrolments WHERE id = ${enrolmentId}`;
   }
 
-  return NextResponse.redirect(new URL("/admin/enrolments?removed=1", req.url), { status: 303 });
+  return seeOther("/admin/enrolments?removed=1");
 }

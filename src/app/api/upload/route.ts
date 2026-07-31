@@ -14,6 +14,7 @@ import { sql } from "@/lib/db";
 import { getSessionUser } from "@/lib/session";
 import { UPLOAD_DIR } from "@/lib/config";
 import { requireCsrf } from "@/lib/csrf";
+import { seeOther } from "@/lib/redirect";
 import { logger, clientIpOf } from "@/lib/logger";
 
 export async function POST(req: NextRequest) {
@@ -21,7 +22,7 @@ export async function POST(req: NextRequest) {
   const user = await getSessionUser();
   if (!user) {
     logger.authzDenied({ ip, method: "POST", path: "/api/upload", actor: null, reason: "no-session" });
-    return NextResponse.redirect(new URL("/login", req.url), { status: 303 });
+    return seeOther("/login");
   }
 
   const actor = { profile_id: user.id, role: user.role };
@@ -38,7 +39,7 @@ export async function POST(req: NextRequest) {
   const file = form.get("document");
   if (!(file instanceof File) || file.size === 0) {
     logger.validationRejected({ ip, method: "POST", path: "/api/upload", actor, reason: "no-file" });
-    return NextResponse.redirect(new URL("/uploads?error=nofile", req.url), { status: 303 });
+    return seeOther("/uploads?error=nofile");
   }
 
   const dir = resolve(process.cwd(), UPLOAD_DIR);
@@ -57,5 +58,5 @@ export async function POST(req: NextRequest) {
     VALUES (${user.id}, ${storedName}, ${originalName}, ${file.type ?? ""}, ${bytes.length}, ${diskPath})
   `;
 
-  return NextResponse.redirect(new URL("/uploads?uploaded=1", req.url), { status: 303 });
+  return seeOther("/uploads?uploaded=1");
 }

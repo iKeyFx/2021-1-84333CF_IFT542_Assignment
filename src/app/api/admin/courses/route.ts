@@ -10,13 +10,14 @@ import { NextResponse, type NextRequest } from "next/server";
 import { sql } from "@/lib/db";
 import { currentAdmin } from "@/lib/auth";
 import { requireCsrf } from "@/lib/csrf";
+import { seeOther } from "@/lib/redirect";
 import { logger, clientIpOf } from "@/lib/logger";
 
 export async function POST(req: NextRequest) {
   const ip = clientIpOf(req);
   const admin = await currentAdmin({ ip, method: "POST", path: "/api/admin/courses" });
   if (!admin) {
-    return NextResponse.redirect(new URL("/login", req.url), { status: 303 });
+    return seeOther("/login");
   }
 
   const actor = { profile_id: admin.id, role: admin.role };
@@ -65,8 +66,8 @@ export async function POST(req: NextRequest) {
       actor,
       reason: String((err as Error)?.name ?? "error"),
     });
-    return NextResponse.redirect(new URL("/admin/courses?error=1", req.url), { status: 303 });
+    return seeOther("/admin/courses?error=1");
   }
 
-  return NextResponse.redirect(new URL("/admin/courses?saved=1", req.url), { status: 303 });
+  return seeOther("/admin/courses?saved=1");
 }
