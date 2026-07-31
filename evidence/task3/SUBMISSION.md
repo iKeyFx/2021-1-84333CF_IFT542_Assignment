@@ -44,6 +44,26 @@ runnable commands. `report/task1-threat-model.md` **Appendix D** records them as
 
 ---
 
+## Which screenshots are actually required
+
+**The numbering 15–26 is this project's own scheme, not the assignment's.** The assignment names
+five components for item 26 (defensive tests, code/configuration evidence, redacted logs, an
+incident record, the response runbook, a signed ethics). Screenshots are how those are *presented*,
+not a separate requirement — so the question for each one is whether it evidences something the
+text artefacts cannot.
+
+| Priority | Screenshots | Why |
+|---|---|---|
+| **Essential** | 21, 22, 24, 26 | 21 = "redacted logs", named twice in the brief. 22 = "defensive tests". 24 = the append-only proof, which is a live assertion rather than a claim. 26 = the signed ethics, which only exists once signed. |
+| **Strong** | 15, 16, 18, 19 | The four exploit-neutralised proofs. 19 in particular cannot be inferred from source — the production CSP is assembled at runtime. |
+| **Supporting** | 17, 23, 25 | Useful confirmations. 17 is the only browser-level proof that `Secure` is accepted over loopback, which no Node test can show. |
+| **Optional** | **20** | Already proven three ways: `run-output-after.txt` §4, `tests/auth-login.test.ts:54` (asserts `admin123` → 401), and `db/hash-passwords.mjs`. A screenshot adds presentation, not proof. Skip it if short on time. |
+
+**On 21 specifically:** §5 of `run-output-after.txt` already satisfies the letter of "a redacted
+sample of each log type". A live terminal capture is still worth taking, because a log appearing in
+real time as you trigger it is harder to fabricate than a text file — but if you have to drop one of
+21 and 20, drop 20.
+
 ## Screenshots to capture
 
 **Set up once.** Note §4a and the CSP evidence need a **production** build — the strict policy does
