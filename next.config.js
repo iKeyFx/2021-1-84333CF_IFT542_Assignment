@@ -1,14 +1,58 @@
 /** @type {import('next').NextConfig} */
-// NOTE: This is a deliberately-vulnerable TEACHING artefact for IFT542. Localhost only.
+// NOTE: Localhost-only TEACHING artefact for IFT542. Do not deploy.
+const isDev = process.env.NODE_ENV !== "production";
+
+// Mirrors staticSecurityHeaders() in src/lib/security-headers.ts. Duplicated as
+// plain data because next.config.js is CommonJS and cannot import the .ts
+// module; tests/security-headers.test.ts asserts both surfaces agree.
+const staticHeaders = [
+  { key: "X-Content-Type-Options", value: "nosniff" },
+  { key: "X-Frame-Options", value: "DENY" },
+  { key: "Referrer-Policy", value: "no-referrer" },
+  {
+    key: "Permissions-Policy",
+    value: "camera=(), microphone=(), geolocation=(), interest-cohort=()",
+  },
+];
+
+if (!isDev) {
+  staticHeaders.push({
+    key: "Strict-Transport-Security",
+    value: "max-age=63072000; includeSubDomains",
+  });
+}
+
 const nextConfig = {
   reactStrictMode: true,
-  // [VULN: Debug mode on — Task 3] Framework build errors / source are exposed in this build.
-  // productionBrowserSourceMaps kept on so stack traces map to source during the demo.
-  productionBrowserSourceMaps: true,
+
+  // [FIXED — Task 3: debug mode on]
+  // Browser source maps are no longer shipped in a production build, so the
+  // server's original source cannot be reconstructed from a deployed bundle.
+  productionBrowserSourceMaps: false,
+
   // Uploads are written to ./uploads on local disk by the upload route handler.
   experimental: {
     // Allow large-ish multipart bodies for the document-upload demo.
     serverActions: { bodySizeLimit: "10mb" },
+  },
+
+  // src/middleware.ts deliberately does NOT match /api/* — its Set-Cookie
+  // handling would clobber the session cookie /api/login sets, and JSON
+  // responses need no nonce-based CSP. Those routes get their headers here.
+  async headers() {
+    return [
+      {
+        source: "/api/:path*",
+        headers: [
+          ...staticHeaders,
+          // API responses carry no markup, so the policy can be maximally tight.
+          {
+            key: "Content-Security-Policy",
+            value: "default-src 'none'; frame-ancestors 'none'",
+          },
+        ],
+      },
+    ];
   },
 };
 

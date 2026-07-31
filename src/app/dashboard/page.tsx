@@ -20,15 +20,18 @@ export default async function DashboardPage() {
   return (
     <div className="space-y-6">
       {/*
-        [VULN: Stored XSS (sink) — Task 3]
-        display_name is injected as raw HTML. React would normally escape
-        {user.display_name}; dangerouslySetInnerHTML deliberately bypasses that,
-        so a saved value like <img src=x onerror=alert(document.cookie)> executes.
+        [FIXED — Task 3: stored XSS (sink)]
+        Contextual output encoding. `{user.display_name}` renders the value as a
+        TEXT NODE — React escapes <, >, &, " and ' on the way out, so a stored
+        payload like <img src=x onerror=alert(document.cookie)> is displayed
+        literally instead of being parsed as markup.
+
+        Note the payload is still stored verbatim in the database. Encoding at
+        the point of OUTPUT is the correct control: the same value is safe in a
+        text node and dangerous in raw HTML, so safety is a property of how it is
+        rendered, not of the value itself.
       */}
-      <h1 className="text-2xl font-bold">
-        Welcome,{" "}
-        <span dangerouslySetInnerHTML={{ __html: user.display_name }} />
-      </h1>
+      <h1 className="text-2xl font-bold">Welcome, {user.display_name}</h1>
 
       <div className="grid gap-4 sm:grid-cols-3">
         <div className="rounded border border-slate-200 bg-white p-4">

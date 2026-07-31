@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import "./globals.css";
 import { currentUser } from "@/lib/auth";
+import { CsrfField } from "@/app/_components/CsrfField";
 
 export const metadata: Metadata = {
   title: "IFT542 Student Registration (Vulnerable Demo)",
@@ -11,6 +12,7 @@ export const metadata: Metadata = {
 async function LogoutButton() {
   return (
     <form action="/api/logout" method="post">
+      <CsrfField />
       <button className="text-sm text-white/80 hover:text-white underline">Log out</button>
     </form>
   );

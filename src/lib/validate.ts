@@ -34,9 +34,44 @@ export const PASSWORD_MAX = 128;
  */
 const EMAIL_RE = /^[^\s@]{1,64}@[^\s@]{1,190}\.[^\s@]{1,63}$/;
 
+/**
+ * Profile field bounds. [Task 3 — supporting control for stored XSS]
+ *
+ * These are RESOURCE limits, not a security filter. The control that makes a
+ * stored payload harmless is contextual output encoding at render time
+ * (src/app/dashboard/page.tsx, src/app/profile/page.tsx). Deliberately nothing
+ * here strips or rewrites markup: input filtering is the weaker, bypassable
+ * half of the pair, and stripping would also make the demo dishonest by hiding
+ * the fact that the payload is stored intact and rendered inert.
+ */
+export const DISPLAY_NAME_MAX = 100;
+export const BIO_MAX = 1000;
+
 export type CredentialsInput =
   | { ok: true; email: string; password: string }
   | { ok: false; reason: string };
+
+export type ProfileInput =
+  | { ok: true; displayName: string; bio: string }
+  | { ok: false; reason: string };
+
+/** Validate a profile-update form body. */
+export function validateProfile(form: FormData): ProfileInput {
+  const rawName = form.get("display_name");
+  const rawBio = form.get("bio");
+
+  if (typeof rawName !== "string") return { ok: false, reason: "display_name-not-string" };
+  if (typeof rawBio !== "string") return { ok: false, reason: "bio-not-string" };
+
+  const displayName = rawName.trim();
+  if (displayName.length === 0) return { ok: false, reason: "display_name-empty" };
+  if (displayName.length > DISPLAY_NAME_MAX) {
+    return { ok: false, reason: "display_name-too-long" };
+  }
+  if (rawBio.length > BIO_MAX) return { ok: false, reason: "bio-too-long" };
+
+  return { ok: true, displayName, bio: rawBio };
+}
 
 /**
  * Validate and normalise a parsed JSON login body.

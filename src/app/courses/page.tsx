@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { currentUser } from "@/lib/auth";
 import { sql } from "@/lib/db";
+import { CsrfField } from "@/app/_components/CsrfField";
 
 export default async function CoursesPage({
   searchParams,
@@ -50,6 +51,7 @@ export default async function CoursesPage({
             {!c.enrolled && (
               // Plain HTML form POST — no CSRF token. [VULN: No CSRF protection — Task 3]
               <form action="/api/enrol" method="post" className="mt-3">
+                <CsrfField />
                 <input type="hidden" name="course_id" value={c.id} />
                 <button
                   type="submit"

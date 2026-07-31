@@ -1,40 +1,58 @@
 // ============================================================================
 //  POST /api/profile — update the logged-in student's display name + bio.
 //
-//  Planted vulnerabilities (Task 3):
-//   - [VULN: No CSRF protection — Task 3] The handler authenticates using ONLY
-//     the ambient session cookie. There is no CSRF token, no Origin/Referer
-//     check, and (see lib/session.ts) the cookie has no SameSite attribute, so
-//     any other site can submit this form on the victim's behalf.
-//   - The submitted display_name is stored RAW (no sanitisation/encoding). It
-//     is later rendered with dangerouslySetInnerHTML on the dashboard/profile,
-//     which is the stored-XSS sink. [VULN: Stored XSS (source) — Task 3]
+//  [FIXED — Task 3: no CSRF protection]
+//  The handler no longer trusts the ambient session cookie alone. It requires a
+//  signed anti-CSRF token bound to that session and rejects a mismatched or
+//  "null" Origin. With SameSite=Lax on the session cookie (src/lib/session.ts),
+//  a cross-site form post now fails on three independent grounds.
+//
+//  [FIXED — Task 3: stored XSS (source)]
+//  display_name is still stored VERBATIM — deliberately. What makes it harmless
+//  is contextual output encoding at render time (dashboard/page.tsx,
+//  profile/page.tsx). The length bounds applied here are a resource limit, not
+//  a sanitiser: input filtering is the weaker half of the pair and stripping the
+//  payload would hide the fact that it is stored intact and rendered inert.
 // ============================================================================
 import { NextResponse, type NextRequest } from "next/server";
 import { sql } from "@/lib/db";
 import { getSessionUser } from "@/lib/session";
+import { requireCsrf } from "@/lib/csrf";
+import { validateProfile } from "@/lib/validate";
+import { logger, clientIpOf } from "@/lib/logger";
+
+const PATH = "/api/profile";
 
 export async function POST(req: NextRequest) {
+  const ip = clientIpOf(req);
   const user = await getSessionUser();
+
   if (!user) {
+    logger.authzDenied({ ip, method: "POST", path: PATH, actor: null, reason: "no-session" });
     return NextResponse.redirect(new URL("/login", req.url), { status: 303 });
   }
 
-  const form = await req.formData();
-  const displayName = String(form.get("display_name") ?? "");
-  const bio = String(form.get("bio") ?? "");
+  const actor = { profile_id: user.id, role: user.role };
 
-  // [VULN: No CSRF protection — Task 3]
-  // No csrf token is read or verified here; the session cookie alone authorises
-  // the state change. Combined with the missing SameSite attribute, a
-  // cross-site auto-submitting form can silently rewrite the victim's profile.
+  const csrf = await requireCsrf(req);
+  if (!csrf.ok) {
+    logger.csrfRejected({ ip, method: "POST", path: PATH, actor, reason: csrf.reason });
+    return NextResponse.json({ error: "Request rejected" }, { status: 403 });
+  }
 
-  // [VULN: Stored XSS (source) — Task 3]
-  // display_name is written verbatim — angle brackets, <script>, onerror=... all
-  // survive to the database and are echoed unescaped on render.
+  // requireCsrf consumed the body to read the hidden field. A request body can
+  // only be read once, so reuse what it parsed rather than calling formData().
+  const form = csrf.form ?? (await req.formData());
+  const input = validateProfile(form);
+
+  if (!input.ok) {
+    logger.validationRejected({ ip, method: "POST", path: PATH, actor, reason: input.reason });
+    return NextResponse.redirect(new URL("/profile?error=invalid", req.url), { status: 303 });
+  }
+
   await sql`
     UPDATE profiles
-    SET display_name = ${displayName}, bio = ${bio}
+    SET display_name = ${input.displayName}, bio = ${input.bio}
     WHERE id = ${user.id}
   `;
 

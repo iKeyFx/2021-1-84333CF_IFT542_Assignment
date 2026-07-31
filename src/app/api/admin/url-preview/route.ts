@@ -1,58 +1,80 @@
 // ============================================================================
 //  POST /api/admin/url-preview — "URL preview / import" admin feature.
 //
-//  [VULN: Server-Side Request Forgery (SSRF) — Task 3]
-//  The server fetches ANY URL the admin submits, with NO guards whatsoever:
-//   - no scheme allowlist (file://, http://, https:// all reach fetch),
-//   - no blocking of loopback (127.0.0.1 / localhost),
-//   - no blocking of link-local cloud metadata (169.254.169.254),
-//   - no blocking of RFC1918 private ranges (10/8, 172.16/12, 192.168/16),
-//   - no DNS-rebinding / redirect pinning.
-//  The response status, headers and a body snippet are returned to the caller,
-//  so the endpoint doubles as a read oracle for internal-only services.
+//  [FIXED — Task 3: Server-Side Request Forgery]
+//  Every outbound request now goes through src/lib/url-guard.ts, which enforces
+//  a scheme allowlist, a destination HOST allowlist, DNS resolution with
+//  rejection of loopback / RFC1918 / link-local (169.254.169.254) / reserved
+//  addresses, manual redirect handling that re-validates every hop, a 5s
+//  timeout and a 64 KB body cap.
+//
+//  [FIXED — Task 3: verbose errors]
+//  The DEBUG branch that returned err.message and err.stack to the client is
+//  gone. A blocked URL gets a fixed message; the specific reason is logged
+//  server-side only, because the reason itself ("blocked-loopback" vs
+//  "dns-failed") is an internal-network oracle.
+//
+//  [FIXED — Task 3: no CSRF protection]
+//  The endpoint is state-changing from the network's point of view, so it
+//  requires the anti-CSRF token like every other POST.
 // ============================================================================
 import { NextResponse, type NextRequest } from "next/server";
 import { currentAdmin } from "@/lib/auth";
-import { DEBUG } from "@/lib/config";
+import { requireCsrf } from "@/lib/csrf";
+import { safeFetch } from "@/lib/url-guard";
+import { logger, clientIpOf } from "@/lib/logger";
+
+// node:dns via url-guard — pin to the Node runtime.
+export const runtime = "nodejs";
+
+const PATH = "/api/admin/url-preview";
 
 export async function POST(req: NextRequest) {
-  const admin = await currentAdmin();
+  const ip = clientIpOf(req);
+
+  const admin = await currentAdmin({ ip, method: "POST", path: PATH });
   if (!admin) {
     return NextResponse.json({ error: "Admin only" }, { status: 403 });
+  }
+
+  const actor = { profile_id: admin.id, role: admin.role };
+
+  const csrf = await requireCsrf(req);
+  if (!csrf.ok) {
+    logger.csrfRejected({ ip, method: "POST", path: PATH, actor, reason: csrf.reason });
+    return NextResponse.json({ error: "Request rejected" }, { status: 403 });
   }
 
   const body = await req.json().catch(() => ({}));
   const target = String(body.url ?? "");
 
-  // [VULN: SSRF — Task 3]
-  // The user-supplied URL is passed straight to fetch(). No validation of the
-  // host, scheme, or resolved IP is performed before the request leaves the
-  // server, so this can be pointed at internal/loopback/metadata endpoints.
-  try {
-    const started = Date.now();
-    const resp = await fetch(target, { redirect: "follow" });
-    const text = await resp.text();
-    const headers: Record<string, string> = {};
-    resp.headers.forEach((value, key) => {
-      headers[key] = value;
-    });
+  const result = await safeFetch(target);
 
-    return NextResponse.json({
-      ok: true,
-      requestedUrl: target,
-      status: resp.status,
-      statusText: resp.statusText,
-      elapsedMs: Date.now() - started,
-      headers,
-      bodySnippet: text.slice(0, 4000),
+  if (!result.ok) {
+    // The blocked URL and the precise reason go to the log, never to the client.
+    logger.ssrfBlocked({
+      ip,
+      method: "POST",
+      path: PATH,
+      actor,
+      reason: result.reason,
+      target_url: target.slice(0, 200),
     });
-  } catch (err: any) {
-    // Verbose error surface again (debug on) so failures leak internal detail.
     return NextResponse.json(
-      DEBUG
-        ? { ok: false, requestedUrl: target, error: err?.message, stack: err?.stack }
-        : { ok: false, error: "Fetch failed" },
-      { status: 502 }
+      { ok: false, error: "URL not allowed" },
+      { status: 403 }
     );
   }
+
+  return NextResponse.json({
+    ok: true,
+    requestedUrl: target,
+    finalUrl: result.finalUrl,
+    status: result.status,
+    statusText: result.statusText,
+    elapsedMs: result.elapsedMs,
+    headers: result.headers,
+    bodySnippet: result.bodySnippet,
+    truncated: result.truncated,
+  });
 }

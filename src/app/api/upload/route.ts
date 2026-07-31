@@ -13,16 +13,31 @@ import { join, resolve } from "node:path";
 import { sql } from "@/lib/db";
 import { getSessionUser } from "@/lib/session";
 import { UPLOAD_DIR } from "@/lib/config";
+import { requireCsrf } from "@/lib/csrf";
+import { logger, clientIpOf } from "@/lib/logger";
 
 export async function POST(req: NextRequest) {
+  const ip = clientIpOf(req);
   const user = await getSessionUser();
   if (!user) {
+    logger.authzDenied({ ip, method: "POST", path: "/api/upload", actor: null, reason: "no-session" });
     return NextResponse.redirect(new URL("/login", req.url), { status: 303 });
   }
 
-  const form = await req.formData();
+  const actor = { profile_id: user.id, role: user.role };
+
+  // [FIXED — Task 3] The token survives multipart/form-data: requireCsrf reads
+  // the hidden _csrf field out of the parsed FormData and hands it back.
+  const csrf = await requireCsrf(req);
+  if (!csrf.ok) {
+    logger.csrfRejected({ ip, method: "POST", path: "/api/upload", actor, reason: csrf.reason });
+    return NextResponse.json({ error: "Request rejected" }, { status: 403 });
+  }
+
+  const form = csrf.form ?? (await req.formData());
   const file = form.get("document");
   if (!(file instanceof File) || file.size === 0) {
+    logger.validationRejected({ ip, method: "POST", path: "/api/upload", actor, reason: "no-file" });
     return NextResponse.redirect(new URL("/uploads?error=nofile", req.url), { status: 303 });
   }
 

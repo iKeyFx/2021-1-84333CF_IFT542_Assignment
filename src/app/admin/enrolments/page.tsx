@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { currentAdmin } from "@/lib/auth";
 import { sql } from "@/lib/db";
+import { CsrfField } from "@/app/_components/CsrfField";
 
 export default async function AdminEnrolmentsPage({
   searchParams,
@@ -60,6 +61,7 @@ export default async function AdminEnrolmentsPage({
                   <td className="py-2">{new Date(r.created_at).toLocaleDateString()}</td>
                   <td className="py-2 text-right">
                     <form action="/api/admin/enrolments" method="post">
+                      <CsrfField />
                       <input type="hidden" name="enrolment_id" value={r.id} />
                       <button className="text-red-700 underline">Remove</button>
                     </form>

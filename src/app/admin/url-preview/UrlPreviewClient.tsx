@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { csrfJsonHeaders } from "@/lib/csrf-client";
 
 export default function UrlPreviewClient() {
   const [url, setUrl] = useState("");
@@ -14,7 +15,8 @@ export default function UrlPreviewClient() {
     try {
       const res = await fetch("/api/admin/url-preview", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        // [FIXED — Task 3] Carries the anti-CSRF token from the `csrf` cookie.
+        headers: csrfJsonHeaders(),
         body: JSON.stringify({ url }),
       });
       setResult(await res.json());

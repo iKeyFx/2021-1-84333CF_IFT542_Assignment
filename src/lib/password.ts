@@ -12,6 +12,7 @@
 //  same password still get different digests.
 // ============================================================================
 import { hash as argon2Hash, verify as argon2Verify, argon2id } from "argon2";
+import { logger } from "./logger";
 
 /**
  * OWASP Password Storage Cheat Sheet minimum for Argon2id: 19 MiB, t=2, p=1.
@@ -74,7 +75,12 @@ export async function verifyPassword(
     const ok = await argon2Verify(target, plain);
     return digest !== null && ok;
   } catch (err) {
-    console.error("[password] verify failed (malformed digest?)", err);
+    // Structured, and deliberately carries NO digest/password material — the
+    // logger would strip those field names anyway.
+    logger.serverError({
+      event: "auth.password.verify_error",
+      reason: String((err as Error)?.name ?? "error"),
+    });
     return false;
   }
 }

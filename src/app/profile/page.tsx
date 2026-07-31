@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { currentUser } from "@/lib/auth";
+import { CsrfField } from "@/app/_components/CsrfField";
 
 export default async function ProfilePage({
   searchParams,
@@ -22,26 +23,24 @@ export default async function ProfilePage({
       <div className="rounded border border-slate-200 bg-white p-4">
         <p className="text-sm text-slate-500 mb-1">Current display name (as rendered):</p>
         {/*
-          [VULN: Stored XSS (sink) — Task 3]
-          The saved display name is echoed back here as raw HTML too, so the
-          payload fires on this page as well as on the dashboard.
+          [FIXED — Task 3: stored XSS (sink)]
+          Rendered as a text node, so the value is escaped on output. See the
+          matching comment in src/app/dashboard/page.tsx.
         */}
-        <div
-          className="text-lg font-medium"
-          dangerouslySetInnerHTML={{ __html: user.display_name }}
-        />
+        <div className="text-lg font-medium">{user.display_name}</div>
       </div>
 
       {/*
-        Plain HTML form POST — no CSRF token field. The matching handler
-        (src/app/api/profile/route.ts) trusts the session cookie alone.
-        [VULN: No CSRF protection — Task 3]
+        [FIXED — Task 3: no CSRF protection]
+        The form now carries a hidden anti-CSRF token (<CsrfField />) which
+        src/app/api/profile/route.ts verifies before applying any change.
       */}
       <form
         action="/api/profile"
         method="post"
         className="space-y-4 bg-white p-6 rounded border border-slate-200"
       >
+        <CsrfField />
         <div>
           <label className="block text-sm font-medium mb-1">Display name</label>
           <input
@@ -51,7 +50,7 @@ export default async function ProfilePage({
             className="w-full border border-slate-300 rounded px-3 py-2"
           />
           <p className="text-xs text-slate-400 mt-1">
-            Stored and rendered without encoding in this build.
+            Stored as-is and escaped on output, so markup is shown literally.
           </p>
         </div>
         <div>

@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { currentUser } from "@/lib/auth";
 import { sql } from "@/lib/db";
+import { CsrfField } from "@/app/_components/CsrfField";
 
 export default async function UploadsPage({
   searchParams,
@@ -40,6 +41,7 @@ export default async function UploadsPage({
         encType="multipart/form-data"
         className="space-y-4 bg-white p-6 rounded border border-slate-200"
       >
+        <CsrfField />
         <div>
           <label className="block text-sm font-medium mb-1">Choose a document</label>
           <input type="file" name="document" className="block w-full text-sm" />

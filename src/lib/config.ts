@@ -35,7 +35,22 @@ export const SESSION_COOKIE = "sid";
  * labelled ephemeral value is generated per process, so `npm run dev` works
  * without a .env while still never using a value committed to the repo.
  */
-let devSecret: string | null = null;
+/**
+ * Development-only fallback.
+ *
+ * This MUST be a fixed constant rather than a random per-process value. CSRF
+ * tokens are minted in middleware (EDGE runtime) and verified in route handlers
+ * (NODE runtime) — two separate module instances. A randomly generated secret
+ * would differ between them, so every token would fail verification and the app
+ * would be unusable without a .env. That was found the hard way.
+ *
+ * This is NOT the vulnerability that was removed. The v0 build used its
+ * hardcoded constant in EVERY environment, including production, so all
+ * deployments shared one guessable key. Here production throws instead, and
+ * this value can only ever be reached with NODE_ENV !== "production".
+ */
+const DEV_ONLY_SECRET = "ift542-DEVELOPMENT-ONLY-secret-never-valid-in-production";
+
 let warnedAboutSecret = false;
 
 export function sessionSecret(): string {
@@ -51,21 +66,14 @@ export function sessionSecret(): string {
 
   if (!warnedAboutSecret) {
     console.warn(
-      "[config] SESSION_SECRET is unset — generating an ephemeral development " +
-        "secret. CSRF tokens will not survive a server restart. Set SESSION_SECRET " +
-        "in .env to make them stable. This would be a hard error in production."
+      "[config] SESSION_SECRET is unset — falling back to the development-only " +
+        "secret. Fine for localhost; a hard error in production. Copy .env.example " +
+        "to .env to set your own."
     );
     warnedAboutSecret = true;
   }
-  // Random per process: never a committed constant, even in dev.
-  // Uses Web Crypto (not node:crypto) because src/middleware.ts imports this
-  // module and runs on the EDGE runtime, where node: builtins are unavailable.
-  if (devSecret === null) {
-    const bytes = new Uint8Array(32);
-    crypto.getRandomValues(bytes);
-    devSecret = Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
-  }
-  return devSecret;
+
+  return DEV_ONLY_SECRET;
 }
 
 /**

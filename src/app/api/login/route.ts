@@ -22,9 +22,10 @@
 //   6. No session regen   -> [FIXED] establishSession() mints a fresh id and
 //                            destroys the presented one. See src/lib/session.ts.
 //
-//  Still deliberately vulnerable (Task 3, out of scope here): the session
-//  cookie carries no SameSite/Secure, DEBUG is on globally, and the seeded
-//  admin@campus.local / admin123 account remains.
+//  Task 3 additions:
+//   - Origin/Referer check (the token itself is not required here — login is
+//     pre-session, and the Task 2 PoC scripts post to it directly).
+//   - All logging goes through the structured logger; the email is masked.
 // ============================================================================
 import { NextResponse, type NextRequest } from "next/server";
 import { sql } from "@/lib/db";
@@ -32,6 +33,8 @@ import { verifyPassword } from "@/lib/password";
 import { validateCredentials } from "@/lib/validate";
 import { checkRateLimit, recordFailure, resetRateLimit, clientIp } from "@/lib/rate-limit";
 import { establishSession, buildSessionCookie, getPresentedSid } from "@/lib/session";
+import { checkOrigin } from "@/lib/csrf";
+import { logger } from "@/lib/logger";
 
 // argon2 is a native module — pin this handler to the Node.js runtime.
 export const runtime = "nodejs";
@@ -42,6 +45,8 @@ export const runtime = "nodejs";
  * account, or wrong password. Anything more specific is an oracle.
  */
 const GENERIC_ERROR = { error: "Invalid email or password" } as const;
+
+const PATH = "/api/login";
 
 type AuthRow = {
   id: number;
@@ -55,10 +60,20 @@ export async function POST(req: NextRequest) {
   const ip = clientIp(req);
   const rateKey = `login:${ip}`;
 
+  // [FIXED — Task 3] Login is exempt from the CSRF TOKEN (it is pre-session,
+  // and the Task 2 proof-of-concept scripts post here directly), but it still
+  // gets the Origin check. A browser cross-site login attempt sends a
+  // mismatched or "null" Origin and is refused; a Node client sends none and is
+  // allowed. See the trade-off note in src/lib/csrf.ts.
+  if (!checkOrigin(req)) {
+    logger.loginFailed({ ip, method: "POST", path: PATH, actor: null, reason: "bad-origin" });
+    return NextResponse.json(GENERIC_ERROR, { status: 403 });
+  }
+
   // ---- 1. Rate limit, before any DB or Argon2 work -------------------------
   const limit = checkRateLimit(rateKey);
   if (!limit.allowed) {
-    console.warn(`[login] rate limited ip=${ip} retry_after=${limit.retryAfterSec}s`);
+    logger.loginThrottled({ ip, method: "POST", path: PATH, actor: null, retry_after_s: limit.retryAfterSec });
     return NextResponse.json(
       { error: "Too many login attempts. Please try again later." },
       { status: 429, headers: { "Retry-After": String(limit.retryAfterSec) } }
@@ -70,7 +85,7 @@ export async function POST(req: NextRequest) {
   const input = validateCredentials(body);
   if (!input.ok) {
     // `reason` is a server-side log label and never reaches the client.
-    console.warn(`[login] rejected ip=${ip} reason=${input.reason}`);
+    logger.validationRejected({ ip, method: "POST", path: PATH, actor: null, reason: input.reason });
     recordFailure(rateKey);
     return NextResponse.json(GENERIC_ERROR, { status: 401 });
   }
@@ -92,7 +107,7 @@ export async function POST(req: NextRequest) {
     `;
   } catch (err) {
     // Full detail to the server log; nothing but a fixed string to the client.
-    console.error("[login] database error", err);
+    logger.serverError({ event: "auth.login.db_error", ip, method: "POST", path: PATH, actor: null, reason: String((err as Error)?.name ?? "error") });
     return NextResponse.json({ error: "Login failed" }, { status: 500 });
   }
 
@@ -105,7 +120,9 @@ export async function POST(req: NextRequest) {
   const ok = await verifyPassword(account?.password_hash ?? null, input.password);
 
   if (!account || !ok) {
-    console.warn(`[login] failed ip=${ip} email=${input.email} account_exists=${Boolean(account)}`);
+    // The email is MASKED by the logger (a***@campus.local). The previous
+    // implementation logged it verbatim, which put PII in the log file.
+    logger.loginFailed({ ip, method: "POST", path: PATH, actor: null, email: input.email, reason: account ? "bad-password" : "unknown-account" });
     recordFailure(rateKey);
     // Identical response for "no such account" and "wrong password".
     return NextResponse.json(GENERIC_ERROR, { status: 401 });
@@ -114,14 +131,18 @@ export async function POST(req: NextRequest) {
   // ---- 5. Success: rotate the session, clear the throttle ------------------
   resetRateLimit(rateKey);
   const sid = await establishSession(account.id, getPresentedSid(req));
-  console.info(`[login] success ip=${ip} profile_id=${account.id}`);
+  logger.loginSucceeded({
+    ip,
+    method: "POST",
+    path: PATH,
+    actor: { profile_id: account.id, role: account.role },
+  });
 
   const res = NextResponse.json({
     ok: true,
     user: { id: account.id, email: account.email, role: account.role },
   });
-  // Cookie attributes are unchanged from the baseline on purpose — the missing
-  // SameSite/Secure is a Task 3 finding (see src/lib/session.ts).
+  // [FIXED — Task 3] The cookie now carries HttpOnly + SameSite=Lax + Secure.
   res.headers.append("Set-Cookie", buildSessionCookie(sid));
   return res;
 }
