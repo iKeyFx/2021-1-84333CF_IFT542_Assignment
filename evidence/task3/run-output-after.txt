@@ -291,12 +291,18 @@ $ npm run db:reset && npm test          (from cold, no dev server running)
  ✓ tests/security-headers.test.ts      (13 tests)  Task 3
  ✓ tests/ssrf-guard.test.ts            (50 tests)  Task 3
  ✓ tests/logging.test.ts               (13 tests)  Task 3
+ ✓ tests/incident-response.test.ts     (25 tests)  Task 3 — item 26
 
- Test Files  10 passed (10)
-      Tests  157 passed | 1 skipped (158)
+ Test Files  11 passed (11)
+      Tests  182 passed | 1 skipped (183)
 
 The skipped test is the single live-network SSRF success path, gated behind
 ALLOW_NETWORK_TESTS=1 so the suite stays green offline.
+
+Reproducibility: five consecutive `npm test` runs, back to back, all green. The
+per-run source-address allocator previously had only two possible values, so
+runs inside the rate limiter's 60s window collided ~50% of the time and
+rate-limit.test.ts inherited the previous run's bucket. It now has 256 slices.
 
 
 --------------------------------------------------------------------------------
@@ -313,3 +319,231 @@ nothing about SSRF.
 
 db/migrations/001_init.sql is byte-identical, so the Task 1 report's citation of
 001_init.sql:29 still resolves.
+
+
+--------------------------------------------------------------------------------
+ 8. INCIDENT-RESPONSE CONTROLS — the four (C) controls, demonstrated
+--------------------------------------------------------------------------------
+The risk register (report/task1-threat-model.md §3) promised four CORRECTIVE
+controls that neither Task 2 nor Task 3 built. They now exist as runnable
+commands. Captured live; operator identity pinned with IR_OPERATOR so this
+evidence does not carry the capture machine's hostname.
+
+  T1  session revocation + runbook        ir/revoke-sessions.mjs
+  T9  invalidate sessions on leak         ir/rotate-secrets.mjs
+  T5  forced reset on suspected breach    ir/force-reset.mjs
+  T4  append-only retention               ir/audit-log.mjs
+
+--- 8a. SAFETY CONTRACT — nothing mutates by accident -------------------------
+
+$ npm run ir:revoke-sessions
+  usage error: a scope is required: --all, --email <address> or --role <student|admin>
+  exit 2
+
+$ npm run ir:revoke-sessions -- --all --yes
+  usage error: --yes requires --incident <id> so the action is attributable
+               (e.g. --incident INC-2026-001; see report/incident-record.md)
+  exit 2
+  -> and NOTHING was changed: the check runs before any database work.
+
+$ npm run ir:revoke-sessions -- --all           (no --yes: the DEFAULT is a dry run)
+
+  === SESSION REVOCATION — scope: all profiles ===
+    a***@campus.local        student  1 session(s)
+    1 session(s) across 1 account(s)
+
+    would DELETE the above from `sessions`
+
+  [DRY RUN] Nothing was changed. Re-run with --yes --incident <id> to apply.
+
+--- 8b. T1 — SESSION REVOCATION ends access the patch cannot ------------------
+Patching the injectable query stops NEW bypasses. It does nothing about the
+session already issued, which stays valid for its full 24h lifetime.
+
+  victim session established: sid=f59b98b6-… (truncated)
+  GET /dashboard with that cookie -> HTTP 200
+
+$ npm run ir:revoke-sessions -- --all --incident INC-2026-001 --yes
+
+  === SESSION REVOCATION — scope: all profiles ===
+    a***@campus.local        student  1 session(s)
+    1 session(s) across 1 account(s)
+
+    REVOKED 1 session(s).
+    Affected users are logged out on their next request (307 -> /login).
+
+  GET /dashboard with the SAME cookie -> HTTP 307   Location: /login
+
+307 rather than 200 is the proof. src/middleware.ts only redirects when the sid
+cookie is ABSENT, so a revoked-but-present cookie falls through to
+currentUser() and is redirected there instead.
+
+--- 8c. T5 — FORCED RESET, and why it is not an oracle ------------------------
+
+$ npm run ir:force-reset -- --require --all --incident INC-2026-001 --yes
+
+  === FORCED RESET — LOCK — scope: all profiles ===
+    a***@campus.local        student
+    g***@campus.local        student
+    l***@campus.local        student
+    m***@campus.local        student
+    o***@campus.local        student
+    n***@campus.local        student
+    a***@campus.local        admin
+    7 account(s) to lock  (reason: suspected-credential-compromise)
+    sessions for these accounts will also be revoked
+
+    LOCKED 7 account(s); revoked 0 session(s).
+
+--require also REVOKES sessions. A lock that leaves live sessions authenticated
+is theatre: the attacker holding a stolen sid never visits the login page.
+
+Now the part that matters — a locked account must be INDISTINGUISHABLE from a
+wrong password and from an account that does not exist:
+
+  correct password, locked account -> {"error":"Invalid email or password"} HTTP 401
+  wrong password, same account     -> {"error":"Invalid email or password"} HTTP 401
+  unknown account                  -> {"error":"Invalid email or password"} HTTP 401
+
+Identical status, identical body, no Set-Cookie, and one Argon2id verification
+on every path so the timing matches too. The check sits AFTER verifyPassword()
+inside the EXISTING failure branch (src/app/api/login/route.ts step 4).
+Returning "your account is locked" would hand back exactly the enumeration
+oracle Task 2 removed. The distinction survives only in the server log:
+
+  {"ts":"...","level":"warn","event":"auth.login.blocked","actor":{"type":"anonymous"},
+   "outcome":"denied","ip":"198.51.100.21","method":"POST","path":"/api/login",
+   "email":"a***@campus.local","reason":"reset-required"}
+
+$ npm run ir:force-reset -- --complete --all --incident INC-2026-001 --yes
+    UNLOCKED 7 account(s).
+
+  correct password, unlocked account -> {"ok":true,"user":{"id":1,...}} HTTP 200
+
+NOTE, stated plainly: --complete restores the documented demo password so the
+exercise is repeatable. It is NOT a password-reset flow. A real deployment
+issues a single-use, time-limited, signed token over a verified channel and lets
+the USER pick the new password. This artefact has no mail path and no reset UI.
+
+--- 8d. T9 — SECRET ROTATION -------------------------------------------------
+
+$ npm run ir:rotate-secrets -- --role admin --incident INC-2026-001 --yes
+
+    ROTATED 1 password(s); revoked 3 session(s).
+
+  === NEW CREDENTIALS — transcribe now, they are not stored anywhere ===
+    admin@campus.local           [REDACTED — live credential, 23 chars]
+
+  === NEW SESSION_SECRET — put this in .env, then restart the server ===
+    SESSION_SECRET=[REDACTED — live secret, 43 chars]
+
+  old admin password -> {"error":"Invalid email or password"} HTTP 401
+  new admin password -> {"ok":true,"user":{...,"role":"admin"}} HTTP 200
+
+The two values are REDACTED here and nowhere else: the command prints them
+unmasked because an operator has to use them. That is also why the script
+refuses to write .env itself — the server reads SESSION_SECRET at process start,
+so editing the file would leave the running process on the old key and silently
+break every CSRF check.
+
+Rotating SESSION_SECRET also invalidates every outstanding CSRF token for free,
+because a token is HMAC-SHA256(SESSION_SECRET, sid) — src/lib/csrf.ts.
+
+
+--------------------------------------------------------------------------------
+ 9. APPEND-ONLY AUDIT RETENTION — T4, proven by attempting to break it
+--------------------------------------------------------------------------------
+
+$ npm run ir:audit-log -- --verify
+
+  === APPEND-ONLY VERIFICATION — security_events ===
+    [PASS] trigger security_events_no_change defined present
+    [PASS] trigger security_events_no_truncate defined present
+    [PASS] INSERT is permitted                    allowed (rolled back)
+    [PASS] UPDATE is refused                      42501
+    [PASS] DELETE is refused                      42501
+    [PASS] DELETE matching ZERO rows is refused   42501
+    [PASS] TRUNCATE is refused                    42501
+
+    ALL 7 CHECKS PASSED — security_events is append-only.
+    Records may be added but never altered or removed, by anyone,
+    including the table owner the application connects as.
+
+This does not merely check that the triggers are DEFINED. It attempts each
+mutation inside a transaction that is always rolled back and asserts SQLSTATE
+42501, the same pattern as the Task 2 CHECK-constraint test.
+
+THE ZERO-ROW DELETE IS THE ONE THAT MATTERS. A row-level BEFORE DELETE trigger
+never fires when nothing matches, so with a row-level trigger
+"DELETE FROM security_events WHERE id = -1" would succeed silently and the whole
+control would be bypassable one row at a time. Migration 003 uses FOR EACH
+STATEMENT triggers, which fire on the attempt.
+
+Enforcement is a trigger and not a REVOKE because the application connects as
+the table OWNER, and an owner can always grant privileges back to themselves.
+
+--- 9a. RETENTION SURVIVES A FULL WIPE ---------------------------------------
+
+  security_events rows BEFORE "npm run db:reset" : 105
+  security_events rows AFTER  "npm run db:reset" : 105
+
+001_init.sql drops and recreates every application table on each migrate, and
+seed.sql truncates them. security_events survives both because it is created
+IF NOT EXISTS, never dropped, and carries NO foreign key — surviving a wipe is
+what "retention" means.
+
+The absent FK on actor_profile_id is deliberate: ON DELETE CASCADE would mean
+that deleting a profile erases that profile's audit trail, which is the T4
+repudiation threat rebuilt inside the control meant to close it.
+
+--- 9b. THE RESPONSE AUDITS ITSELF -------------------------------------------
+
+$ npm run ir:audit-log -- --tail 6
+
+  2026-07-31T20:56:55.168Z  notice  ir.credentials.reset_required locked   responder@ift542-lab  - [INC-2026-001]
+  2026-07-31T20:56:53.814Z  notice  ir.sessions.revoked        revoked     responder@ift542-lab  - [INC-2026-001]
+  2026-07-31T20:55:46.982Z  notice  ir.credentials.reset_required locked   responder@ift542-lab  - [INC-2026-001]
+  2026-07-31T20:55:45.276Z  notice  ir.sessions.revoked        revoked     responder@ift542-lab  - [INC-2026-001]
+  2026-07-31T20:52:22.496Z  notice  ir.sessions.revoked        no-op       vitest@ift542-lab     - [TEST-...]
+  2026-07-31T20:52:22.244Z  notice  ir.sessions.revoked        revoked     vitest@ift542-lab     - [TEST-...]
+
+  6 record(s). Emails are masked at source by src/lib/logger.ts.
+
+Every ir:* mutation appends its own ir.* record, so the response is audited by
+the same append-only control it administers — and cannot erase its own tracks.
+
+REDACTION IN THE PERSISTED RECORD. The "who" is the OPERATOR, unmasked and on
+purpose: an unattributable response action is the T4 threat all over again. The
+SUBJECT is masked everywhere. That was not true on the first implementation —
+the "scope" field echoed whatever the operator typed after --email, so a record
+whose sibling "accounts" field read "n***@campus.local" also carried
+"email = nova.trainee@campus.local" verbatim. Caught by
+tests/incident-response.test.ts and fixed by separating the phrasing shown on
+the operator's own terminal from the phrasing that gets persisted:
+
+  detail: {"scope":"email = n***@campus.local","accounts":["n***@campus.local"],
+           "accounts_locked":1,"sessions_revoked":1,
+           "reason":"suspected-credential-compromise"}
+
+No password, no digest, no token and no session id appears in any record.
+Session ids are excluded deliberately: a sid is a bearer credential, and an
+audit log is exactly the wrong place to keep one.
+
+--- 9c. --ingest IS A STAND-IN, AND IS LABELLED AS ONE ------------------------
+
+$ npm run ir:audit-log -- --ingest --file server.log --incident INC-2026-001
+
+  === AUDIT INGEST — server.log ===
+    read 4 line(s), appended 3 record(s)
+         1  auth.login.failed
+         1  authz.denied
+         1  auth.login.blocked
+
+The 4th line was ordinary Next.js stdout noise and was correctly ignored.
+
+The application does NOT write to security_events. src/lib/logger.ts emits JSON
+Lines to stdout and knows nothing about a database — it has to stay edge-safe
+because src/middleware.ts imports it, and the edge runtime has no node: builtins
+and no DB handle. --ingest is a LOG SHIPPER standing in for the real one; in
+production it is replaced by Vector / Fluent Bit into WORM storage with a
+retention lock. Claiming otherwise would misrepresent the control.

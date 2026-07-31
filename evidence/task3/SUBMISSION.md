@@ -16,6 +16,34 @@ Numbering continues from Task 2 (which used 07, 08, 13).
 
 ---
 
+## Evidence item 26
+
+> *"Submit defensive tests and code/configuration evidence, redacted logs, an incident record,
+> the response runbook and a signed ethics."*
+
+Five components. Three already existed from the hardening work; two were new.
+
+| # | Component | Artefact | Screenshot? |
+|---|---|---|---|
+| 1 | **Defensive tests** | `npm test` → **182 passed, 1 skipped, 11 files**. `run-output-after.txt` §6. The four corrective controls are covered by `tests/incident-response.test.ts` (25) | **Yes — 22** |
+| 2 | **Code / configuration evidence** | `evidence/task2/login-query-before-after.md`; `run-output-after.txt` §1–§4; `db/migrations/003_incident_response.sql`; `ir/*.mjs`; `git diff v2-hardened-task3 v3-incident-response` | **Yes — 15–20** |
+| 3 | **Redacted logs** | `run-output-after.txt` §5 (five masked application events) and §9b (the persisted audit records). Emails masked at source by `src/lib/logger.ts`; secret-shaped fields dropped by the logger itself | **Yes — 21, 25** |
+| 4 | **Incident record** | [`report/incident-record.md`](../../report/incident-record.md) — `INC-2026-001`, NIST SP 800-61 lifecycle, findings register | — |
+| 5 | **Response runbook** | [`report/response-runbook.md`](../../report/response-runbook.md) — every command executed once and its real output pasted | **Yes — 23, 24** |
+| 6 | **Signed ethics** | [`ETHICS.md`](../../ETHICS.md) → *Declaration* — 8 clauses + signature block | **Yes — 26** |
+
+The four corrective controls the risk register promised and had never delivered are now
+runnable commands. `report/task1-threat-model.md` **Appendix D** records them as delivered.
+
+| Threat | Promised (§3) | Delivered |
+|---|---|---|
+| T1 | `session revocation + runbook (C)` | `npm run ir:revoke-sessions` + the runbook |
+| T9 | `invalidate sessions on leak (C)` | `npm run ir:rotate-secrets` |
+| T5 | `forced reset on suspected breach (C)` | `npm run ir:force-reset` |
+| T4 | `append-only retention (C)` | `npm run ir:audit-log -- --verify` |
+
+---
+
 ## Screenshots to capture
 
 **Set up once.** Note §4a and the CSP evidence need a **production** build — the strict policy does
@@ -36,7 +64,24 @@ npm run build && npm start     # for 19 (strict CSP + HSTS)
 | 19 | `19-security-headers.png` | `npm run build && npm start`, then `curl -I http://127.0.0.1:3000/login` | CSP with `'nonce-…'` and **no `unsafe-`**, plus HSTS, nosniff, `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy` |
 | 20 | `20-admin-rotated.png` | Two login attempts as `admin@campus.local` | rotated password → `200 … "role":"admin"`; `admin123` → `401 {"error":"Invalid email or password"}` |
 | 21 | `21-security-logs.png` | Trigger a failed login, a malformed email, and a student POST to an admin endpoint; screenshot the server's stdout | Three JSON lines: `auth.login.failed`, `validation.rejected`, `authz.denied` — with `email` shown **masked** as `a***@campus.local` |
-| 22 | `22-tests-green.png` | `npm test` | `Test Files 10 passed (10)` and `Tests 157 passed | 1 skipped (158)` |
+| 22 | `22-tests-green.png` | `npm test` | `Test Files 11 passed (11)` and `Tests 182 passed \| 1 skipped (183)` |
+| 23 | `23-ir-revocation.png` | `npm run ir:status`, then `npm run ir:revoke-sessions -- --all --incident INC-2026-001 --yes`, then `ir:status` again | Sessions listed → `REVOKED n session(s)` → `TOTAL: 0`. Ideally include the `307` from a revoked cookie |
+| 24 | `24-append-only.png` | `npm run ir:audit-log -- --verify` | The full `[PASS]` matrix, `42501` on UPDATE / DELETE / **zero-row DELETE** / TRUNCATE, and `ALL 7 CHECKS PASSED` |
+| 25 | `25-ir-locked-login.png` | Lock an account, then attempt login with the **correct** password alongside a wrong-password attempt | Both `401 {"error":"Invalid email or password"}` — identical. Plus the `auth.login.blocked` line in the server log |
+| 26 | `26-signed-ethics.png` | `ETHICS.md` → *Declaration*, printed and signed | The 8 clauses and the completed signature block (name, date, signature filled in **by hand**) |
+
+**Screenshot 22 must be re-shot** if you captured it before item 26 — the count changed from
+157/10 to 182/11.
+
+For 23–25, pin the operator identity so the capture does not carry your machine's hostname:
+
+```bash
+IR_OPERATOR="responder@ift542-lab" npm run ir:revoke-sessions -- --all --incident INC-2026-001 --yes
+```
+
+**Do not screenshot `npm run ir:rotate-secrets --yes`** — it prints a live password and a live
+`SESSION_SECRET`, unmasked, because an operator has to use them. Its evidence is already in
+`run-output-after.txt` §8d with both values redacted.
 
 For 15, the paired database check:
 

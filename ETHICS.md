@@ -29,11 +29,77 @@ well-established educational projects such as OWASP Juice Shop, WebGoat, and DVW
 
 - Keep the repository private to the coursework context.
 - Run it in an isolated local environment; stop the container (`npm run db:down`) when finished.
-- The default admin (`admin@campus.local` / `admin123`) exists **on purpose** as a demonstrated
-  weakness. Do not reuse these credentials anywhere real.
-- The follow-up "hardened" build will remediate every item listed in `report/threat-model.md`.
+- The default admin credential `admin@campus.local` / `admin123` existed **on purpose** as a
+  demonstrated weakness in the `v0-vulnerable` baseline. **It was rotated in Task 3** and is now
+  rejected; the current password comes from `ADMIN_PASSWORD`, falling back to a documented dummy.
+  The retired value remains in the git history at tag `v0-vulnerable` and must never be reused
+  anywhere real.
+- Every item listed in `report/task1-threat-model.md` **has been remediated** — Task 2 closed the
+  authentication and database findings, Task 3 the application and configuration findings. See
+  Appendices B, C and D of that document.
+
+## Incident-response exercise
+
+Task 3 adds a simulated incident-response exercise. Three things about it are worth stating
+plainly:
+
+- [`report/incident-record.md`](report/incident-record.md) documents `INC-2026-001` in the form of
+  a real incident report. **It is not a real breach.** Every event in it was produced deliberately
+  by the author against their own localhost artefact, and the record carries that warning at the
+  top so it cannot be mistaken for one if read out of context.
+- The `ir/` directory contains **operational response commands**, not attack tooling. They revoke
+  sessions, lock accounts, rotate this application's own credentials and verify its audit log.
+  They connect only to the local docker-compose database, require an explicit `--yes` and an
+  incident id before changing anything, and default to a dry run.
+- `ir/rotate-secrets.mjs` prints newly generated secrets **unmasked**, because an operator has to
+  use them. That output must not be pasted into evidence, tickets or screenshots.
 
 ## If in doubt
 
 If any use would take an "attack" outside this local app, or would involve real data or a real
 system, **stop** — that is outside the authorised scope of this coursework artefact.
+
+---
+
+## Declaration
+
+I declare that, in producing and submitting this coursework artefact:
+
+1. **Authorisation.** All security testing was performed against this application only, on
+   hardware I own or am authorised to use, as coursework set for IFT542. No third-party,
+   institutional or production system was targeted, scanned, or accessed at any point.
+2. **Containment.** The application and its database were bound to `127.0.0.1` throughout. The
+   artefact was never deployed, port-forwarded, tunnelled, published, or made reachable by any
+   other person or machine.
+3. **Data.** All data in this repository is fictitious. Every name is invented, every address uses
+   the non-routable `@campus.local` domain, and no real personal data of any person — myself
+   included — was entered, processed or stored.
+4. **No third-party impact.** The proof-of-concept scripts in `tests/`, the incident-response
+   commands in `ir/`, and `evidence/task3/csrf-poc.html` are hard-wired to
+   `http://127.0.0.1:3000`. They are single, application-specific reproductions, not reusable
+   scanners, exploit kits or attack tooling.
+5. **Secrets.** No real credential or secret appears in this repository. The values present in the
+   `v0-vulnerable` baseline were planted placeholders forming part of the lesson, and have been
+   rotated.
+6. **Honesty of evidence.** The captured outputs, logs, test results and timings submitted as
+   evidence are genuine records of commands actually run. Where a control is incomplete, a
+   limitation is documented rather than concealed — see the "Known residuals" section of
+   `README.md` and §4.4 of `report/incident-record.md`. Nothing has been fabricated or
+   selectively edited to appear more favourable.
+7. **Simulated incident.** `report/incident-record.md` records an authorised simulated exercise. I
+   have not represented it, and will not represent it, as a real security breach.
+8. **Responsible handling.** I will keep this repository within the coursework context and will not
+   redistribute it, or any part of it, for use against systems I am not authorised to test.
+
+| | |
+|---|---|
+| **Student ID** | `2021-1-84333CF` |
+| **Course** | `IFT542` — Web Security |
+| **Artefact** | Student Registration portal (localhost teaching build) |
+| **Full name** | ................................................................ |
+| **Date** | ................................................................ |
+| **Signature** | ................................................................ |
+
+> **To submit:** print or export this file, then complete the three blank fields above by hand.
+> Student ID and Course are pre-filled; name, date and signature are deliberately left blank and
+> must be completed by the student personally.

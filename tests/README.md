@@ -7,7 +7,7 @@ Everything here is **hard-wired to `http://127.0.0.1:3000`** and only exercises
 
 ```
 npm run db:reset      # Postgres up + migrate + seed (Argon2id hashes)
-npm test              # 158 tests; starts a dev server itself if one isn't up
+npm test              # 183 tests; starts a dev server itself if one isn't up
 ```
 
 `npm test` reuses a dev server already listening on `127.0.0.1:3000`, and
@@ -54,13 +54,48 @@ The two extra controls get a file each:
 | `security-headers.test.ts` | 13 | 3 | CSP, nonce propagation and per-request uniqueness; static headers on pages and `/api/*`; `buildCsp()` unit-tested for both dev and production |
 | `ssrf-guard.test.ts` | 50 | 3 | The full IP-range matrix offline via an injected resolver, plus the live endpoint; includes the 172.16/12 boundary and IPv4-mapped IPv6 |
 | `logging.test.ts` | 13 | 3 | Event shape, level mapping, email masking, and that secrets are dropped by the logger itself |
+| `incident-response.test.ts` | 25 | 3 (item 26) | The four corrective controls, by running the actual `ir/` scripts: CLI safety contract, revocation (incl. the live 307 probe on a revoked cookie), forced reset proven not to be an oracle, and the append-only matrix |
+
+**Total: 183 (182 passing, 1 skipped) across 11 files.**
 
 One test is skipped by default: the live-network SSRF success path, gated behind
 `ALLOW_NETWORK_TESTS=1` so the suite stays green offline.
 
+### Task 3, item 26 — the incident-response controls
+
+`incident-response.test.ts` runs the real `ir/*.mjs` scripts with `spawnSync`
+and asserts on exit code, stdout and database state. Re-implementing their logic
+in the test would only prove the test agrees with itself; `npm run ir:*` is what
+a responder types, so it is what has to work.
+
+Two assertions carry most of the weight:
+
+- **The forced reset is not an oracle.** A locked account presenting the
+  *correct* password must return a reply byte-identical to a wrong password and
+  to an account that does not exist — same status, same body, no `Set-Cookie`.
+  Otherwise an attacker learns which stolen credentials are still live.
+- **`DELETE` matching ZERO rows is still refused.** This is what distinguishes a
+  statement-level trigger from a row-level one. A row-level `BEFORE DELETE`
+  never fires when nothing matches, so without it the whole append-only control
+  is bypassable with `WHERE id = -1` — and a test against an empty table would
+  pass vacuously.
+
+The file uses `nova.trainee@campus.local`, which no other file touches, and its
+`--all` revocation runs **last** because it clears every session in the database.
+
+### Source-address allocation
+
 Test source IPs are spoofed via `X-Forwarded-For` from the IANA benchmarking
-range `198.18.0.0/15`, randomised per run, so the rate limiter never makes the
-suite flaky and no test-only backdoor endpoint is needed.
+range `198.18.0.0/15`, so the rate limiter never makes the suite flaky and no
+test-only backdoor endpoint is needed — adding a state-clearing route to a
+security deliverable would itself be a vulnerability.
+
+The allocator gives each **file** its own block and each **run** one of 256
+address slices. The per-run entropy is load-bearing: it previously had only two
+possible values, so two runs inside the limiter's 60 s window collided half the
+time and `rate-limit.test.ts` — the one file that deliberately exhausts a
+bucket — failed on roughly every other back-to-back `npm test`. See the comment
+block in `helpers.ts`.
 
 ## Manual proof-of-concept scripts
 
@@ -90,6 +125,14 @@ Then, in another terminal:
 | `node tests/enum-and-verbose.mjs` | User enumeration + verbose DB/stack errors | 2 | identical replies, body keys `[ 'error' ]` — the fix |
 | `node tests/ssrf-demo.mjs` | SSRF via admin URL-preview (server fetches loopback) | 3 | `[SSRF BLOCKED]` (exit 1) — the fix |
 | `tests/xss-payload.txt` | Stored-XSS payloads for the profile display name (manual) | 3 | payloads render as literal text — the fix |
+
+The incident-response commands are **not** PoCs — they are the response side.
+See [`report/response-runbook.md`](../report/response-runbook.md):
+
+```
+npm run ir:status                 # read-only; safe at any time
+npm run ir:audit-log -- --verify  # proves security_events is append-only
+```
 
 CSRF is demonstrated with `evidence/task3/csrf-poc.html` — open it in a browser
 while logged in (see that file's comments). It now **fails** with a 403 and the

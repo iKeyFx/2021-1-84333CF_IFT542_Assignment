@@ -9,8 +9,9 @@ TypeScript + Tailwind**, backed by **local PostgreSQL** (docker-compose) and **p
 **custom cookie-session auth** (no third-party provider).
 
 **Build status:** **all planted defects are remediated.** Task 2 fixed the authentication and
-database findings; Task 3 fixed the application and configuration findings and added security
-logging. Tags: `v0-vulnerable` (untouched baseline) → `v1-hardened-task2` → `v2-hardened-task3`.
+database findings; Task 3 fixed the application and configuration findings, added security
+logging, and built the incident-response controls. Tags: `v0-vulnerable` (untouched baseline) →
+`v1-hardened-task2` → `v2-hardened-task3` → `v3-incident-response`.
 
 ## Features
 
@@ -46,8 +47,12 @@ npm run db:reset
 npm run dev
 # App: http://127.0.0.1:3000
 
-# 5. Run the Task 2 hardening tests (starts a server itself if one isn't up)
-npm test
+# 5. Run the full hardening test suite (starts a server itself if one isn't up)
+npm test                        # 182 passed | 1 skipped, across 11 files
+
+# 6. (optional) inspect the incident-response controls — read-only, safe
+npm run ir:status
+npm run ir:audit-log -- --verify
 ```
 
 Individual DB commands if you prefer:
@@ -58,6 +63,16 @@ npm run db:migrate       # run migrations + seed against a running DB
 npm run db:down          # stop the container
 npm run db:reset:legacy  # stage v0 PLAINTEXT credentials, then re-hash them
                          # to Argon2id — demonstrates the migration end to end
+```
+
+Incident-response commands (all default to a dry run — see *Incident response* below):
+
+```bash
+npm run ir:status              # read-only: live sessions, locked accounts, audit health
+npm run ir:revoke-sessions     # end authenticated access
+npm run ir:force-reset         # lock accounts pending credential reset
+npm run ir:rotate-secrets      # new passwords + new SESSION_SECRET
+npm run ir:audit-log           # --verify | --tail | --ingest
 ```
 
 ## Dummy test accounts (fictitious)
@@ -124,6 +139,29 @@ The remaining application and configuration findings. Diff with
 
 Evidence: [`evidence/task3/run-output-after.txt`](evidence/task3/run-output-after.txt).
 
+## Incident response — Task 3, item 26
+
+The risk register promised four **corrective** controls that neither hardening task built. They
+are now runnable commands, driven by a runbook in which every step is a command rather than a
+paragraph. Diff with `git diff v2-hardened-task3 v3-incident-response`.
+
+| Threat | Control | Command |
+| --- | --- | --- |
+| **T1** | Session revocation — ends access the patch cannot. Parameterizing the query stops new bypasses; the session already issued stays valid for 24 h | `npm run ir:revoke-sessions` |
+| **T9** | Secret rotation — new passwords and a new `SESSION_SECRET`. Rotating the secret also invalidates every outstanding CSRF token, since a token is `HMAC(SESSION_SECRET, sid)` | `npm run ir:rotate-secrets` |
+| **T5** | Forced credential reset — locks the account *and* revokes its sessions. Login is refused **even with the correct password**, with a byte-identical generic 401 | `npm run ir:force-reset` |
+| **T4** | Append-only audit retention — `security_events` refuses UPDATE, DELETE and TRUNCATE with SQLSTATE `42501`, enforced by **statement-level** triggers so a zero-row DELETE is refused too | `npm run ir:audit-log -- --verify` |
+| — | Read-only status: live sessions, locked accounts, audit health | `npm run ir:status` |
+
+**Safety contract, identical for every command:** a dry run is the **default**; `--yes` is
+required to change anything and `--incident <id>` is required alongside it, so no response action
+is anonymous; exactly one scope (`--all` / `--email` / `--role`) is mandatory. Every mutation
+appends its own `ir.*` record, so the response is audited by the control it administers.
+
+Documents: [`report/incident-record.md`](report/incident-record.md) (`INC-2026-001` — an
+authorised **simulated** exercise), [`report/response-runbook.md`](report/response-runbook.md),
+and Appendix D of [`report/task1-threat-model.md`](report/task1-threat-model.md).
+
 ### Known residuals (documented, not hidden)
 
 - SSRF TOCTOU: a DNS-rebinding window remains between our lookup and undici's connect.
@@ -132,26 +170,39 @@ Evidence: [`evidence/task3/run-output-after.txt`](evidence/task3/run-output-afte
 - HSTS is inert over plain HTTP on localhost.
 - One `next` advisory has no fix inside the 14.2 line (`npm audit fix --force` would install Next 16).
 - The upload size cap (the other half of T8) is not implemented.
+- `ir:force-reset --complete` is **not** a password-reset flow — it restores the documented demo
+  password so the exercise repeats. A real system issues a single-use signed token over a
+  verified channel; this artefact has no mail path.
+- `ir:audit-log --ingest` is a **stand-in log shipper**. The app emits to stdout and never writes
+  to the database; production replaces this with a real pipeline into WORM storage.
+- Append-only is enforced by a trigger *inside the database it protects*. Genuine tamper-evidence
+  needs an independent off-host sink.
+- Nothing watches the events — there is no alerting.
 
 ## Project layout
 
 ```
 src/app/            App Router pages + /api route handlers
-src/lib/            db, config, session, auth, password, validate, rate-limit helpers
+src/lib/            db, config, session, auth, password, validate, rate-limit,
+                    csrf, url-guard, security-headers, logger
 db/                 migrations/ + seed.sql + hash-passwords.mjs + migrate.mjs runner
+ir/                 incident-response commands (npm run ir:*)
 tests/              Vitest suite (*.test.ts) + the v0 PoC scripts (*.mjs)
 evidence/task1..3/  what to capture per task (+ csrf-poc.html)
-report/             threat model, risk register, OWASP mapping, remediation status
+report/             threat model, risk register, OWASP mapping, remediation status,
+                    incident record, response runbook
 uploads/            runtime file storage (gitignored)
 ```
 
 ## Vulnerability register
 
-Remaining issues are tagged in source with `// [VULN: <name> — <Task>]`; remediated ones with
-`// [FIXED — Task 2: <name>]`. The full register (with file:line and OWASP mapping) is in
-[`report/task1-threat-model.md`](report/task1-threat-model.md) — Appendix A for the OWASP mapping,
-Appendix B for Task 2 remediation status. Reproduction steps are in
-[`tests/README.md`](tests/README.md) and `evidence/task{1,2,3}/README.md`.
+Remediated issues are tagged in source with `// [FIXED — Task 2: <name>]` or
+`// [FIXED — Task 3: <name>]`. The full register (with file:line and OWASP mapping) is in
+[`report/task1-threat-model.md`](report/task1-threat-model.md) — **Appendix A** for the OWASP
+mapping, **B** for Task 2 remediation status, **C** for Task 3, and **D** for the corrective
+controls delivered under item 26. Reproduction steps are in
+[`tests/README.md`](tests/README.md) and `evidence/task{1,2,3}/README.md`; response procedures
+are in [`report/response-runbook.md`](report/response-runbook.md).
 
 ## Reset / teardown
 

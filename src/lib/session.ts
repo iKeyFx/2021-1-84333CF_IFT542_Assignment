@@ -2,13 +2,18 @@
 //  Custom cookie-session auth (no third-party provider — by design, so the
 //  login query is the centrepiece of the exercise).
 //
-//  Planted vulnerabilities (Task 3):
-//   - The session cookie is written via a HAND-BUILT Set-Cookie header with NO
-//     SameSite attribute. [VULN: No SameSite on session cookie — Task 3]
-//
 //  Remediated (Task 2):
 //   - Login now regenerates the session id. See establishSession() below.
 //     [FIXED — Task 2: no session-id regeneration]
+//
+//  Remediated (Task 3):
+//   - The hand-built Set-Cookie header now carries HttpOnly, SameSite=Lax and
+//     Secure. See cookieAttrs() below.
+//     [FIXED — Task 3: no SameSite on session cookie]
+//
+//  Incident response (Task 3, item 26): deleting a row from `sessions` revokes
+//  that session immediately, because currentUser() resolves the cookie against
+//  this table on every request. That is what `npm run ir:revoke-sessions` does.
 // ============================================================================
 import { randomUUID } from "node:crypto";
 import { cookies } from "next/headers";

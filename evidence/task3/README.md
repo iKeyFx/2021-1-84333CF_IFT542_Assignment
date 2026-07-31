@@ -100,6 +100,22 @@ git diff v1-hardened-task2 v2-hardened-task3
 
 - `node tests/sqli-login.mjs` → `[NO BYPASS]` (exit 1).
 - `node tests/enum-and-verbose.mjs` → identical replies, body keys `['error']`.
-- `npm test` → 157 passing, 1 skipped (the live-network SSRF test, gated behind
-  `ALLOW_NETWORK_TESTS=1`).
+- `npm test` → 182 passing, 1 skipped (the live-network SSRF test, gated behind
+  `ALLOW_NETWORK_TESTS=1`), across 11 files.
 - `db/migrations/001_init.sql` unchanged, so the Task 1 citation of `001_init.sql:29` still resolves.
+
+---
+
+## Item 26 — incident response
+
+Added after the five deliverables above. See `SUBMISSION.md` → *Evidence item 26* for the full
+map, and `run-output-after.txt` §8–§9 for the captures.
+
+- `report/incident-record.md` — `INC-2026-001` (authorised **simulated** exercise; the record
+  says so in a banner at the top).
+- `report/response-runbook.md` — every quoted command was executed and its real output pasted.
+- `ETHICS.md` → *Declaration* — sign by hand; ID and course are pre-filled.
+- `npm run ir:status` · `ir:revoke-sessions` · `ir:force-reset` · `ir:rotate-secrets` ·
+  `ir:audit-log` — the four corrective controls from the risk register, now runnable.
+- `npm run ir:audit-log -- --verify` → all 7 checks pass; `security_events` refuses UPDATE,
+  DELETE, zero-row DELETE and TRUNCATE with SQLSTATE `42501`.

@@ -246,6 +246,81 @@ qualifications recorded honestly:
 
 ---
 
+## Appendix D — Corrective controls, as delivered (Task 3, item 26)
+
+The risk register in §3 lists four controls marked **(C) corrective**. Appendices B and C cover
+the preventive and detective controls; these four were promised there and **not built** until
+now. This appendix records them as delivered.
+
+A corrective control is the one you need *after* prevention has already failed — which, in
+`INC-2026-001`, it had. Parameterizing the login query stopped new bypasses; it did nothing about
+the session the attacker was already holding, or the seven passwords already in their hands.
+
+| Threat | Promised in §3 (verbatim) | Delivered as | Command |
+|---|---|---|---|
+| **T1** (rank 1) | `session revocation + runbook (C)` | `ir/revoke-sessions.mjs` + [`report/response-runbook.md`](response-runbook.md) | `npm run ir:revoke-sessions` |
+| **T9** (rank 2) | `invalidate sessions on leak (C)` | `ir/rotate-secrets.mjs` — rotates passwords **and** `SESSION_SECRET`, revoking sessions | `npm run ir:rotate-secrets` |
+| **T5** (rank 3) | `forced reset on suspected breach (C)` | `ir/force-reset.mjs` + `credential_resets` table + login-handler enforcement | `npm run ir:force-reset` |
+| **T4** (rank 7) | `append-only retention (C)` | `security_events` table with statement-level triggers + `ir/audit-log.mjs` | `npm run ir:audit-log -- --verify` |
+
+### Where each is enforced
+
+| Control | Enforcement point |
+|---|---|
+| Session revocation | `DELETE FROM sessions`; `src/lib/auth.ts` resolves the cookie against that table on every request, so removal is immediate |
+| Forced reset | `src/app/api/login/route.ts` — `LEFT JOIN credential_resets`, folded into the **existing** failure branch after `verifyPassword()` |
+| Secret rotation | Argon2id re-hash in `credentials`; new `SESSION_SECRET` printed for manual placement (the server reads it at process start) |
+| Append-only retention | `db/migrations/003_incident_response.sql` — `BEFORE UPDATE OR DELETE` and `BEFORE TRUNCATE` **statement-level** triggers raising SQLSTATE `42501` |
+
+### Design decisions worth recording
+
+- **`credential_resets` is a table, not a column on `credentials`.** `tests/password-storage.test.ts`
+  asserts that `credentials` has exactly `(profile_id, password_hash)` — that assertion *is* the
+  Task 2 evidence that the plaintext column is gone, so the feature was built around it rather
+  than weakening it. The table also records *why* and *under which incident*, and clearing it is
+  an auditable `DELETE`.
+- **The lock is checked AFTER the Argon2id verification**, inside the existing failure branch. A
+  locked account therefore returns a byte-identical `401` with no `Set-Cookie` and the same
+  response time as a wrong password. Checking earlier and returning "your account is locked"
+  would hand back precisely the enumeration oracle T7 was closed to remove.
+- **The triggers are statement-level, not row-level.** A row-level `BEFORE DELETE` trigger does
+  not fire when zero rows match, so `DELETE FROM security_events WHERE id = -1` would have
+  succeeded silently — and any test asserting "DELETE is refused" against an empty table would
+  have passed vacuously.
+- **Append-only is a trigger, not a `REVOKE`.** The application connects as the table *owner*,
+  and an owner can always grant privileges back to themselves. A trigger fires regardless of who
+  is asking.
+- **`security_events` has no foreign key on `actor_profile_id`** and is never dropped. An
+  `ON DELETE CASCADE` would mean deleting a profile erases its audit trail — the T4 repudiation
+  threat rebuilt inside the control meant to close it. It also survives `npm run db:reset`,
+  because surviving a wipe is what retention means.
+- **Every `ir:*` mutation writes its own `ir.*` audit record**, so the response is audited by the
+  same append-only control it administers — and cannot erase its own tracks.
+
+### Evidence
+
+| Artefact | Contents |
+|---|---|
+| `tests/incident-response.test.ts` | 25 tests: CLI safety contract, revocation (incl. the live 307 probe), the forced-reset oracle checks, and the append-only matrix |
+| `evidence/task3/run-output-after.txt` §7–§8 | Captured output of the full response cycle and the append-only proof |
+| [`report/incident-record.md`](incident-record.md) | `INC-2026-001` — the incident these controls answer |
+| [`report/response-runbook.md`](response-runbook.md) | Step-by-step procedures; every command executed and its real output pasted |
+
+### Honest limitations
+
+- **`--complete` is not a password-reset flow.** It restores the documented demo password so the
+  exercise is repeatable. A real deployment issues a single-use, time-limited, signed token over
+  a verified channel and lets the user choose the new password. This artefact has no mail path
+  and no reset UI.
+- **`--ingest` is a stand-in log shipper.** The application does not write to `security_events`;
+  `src/lib/logger.ts` emits to stdout and must stay edge-safe. Production replaces this with a
+  real pipeline into WORM storage.
+- **Append-only is enforced inside the same database it protects.** A full database compromise
+  could drop the trigger. Genuine tamper-evidence requires an independent, off-host sink.
+- **No alerting exists.** The events are emitted and can be ingested, but nothing watches them.
+
+---
+
 ### Coverage & consistency checklist for this task
 - [x] DFD exported to `evidence/task1/dfd.png` and referenced in the report
 - [x] All six STRIDE categories present (they are: S,T,R,I,D,E)

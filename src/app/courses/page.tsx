@@ -49,7 +49,8 @@ export default async function CoursesPage({
             <p className="text-sm text-slate-600 mt-1">{c.description}</p>
 
             {!c.enrolled && (
-              // Plain HTML form POST — no CSRF token. [VULN: No CSRF protection — Task 3]
+              // [FIXED — Task 3: no CSRF protection] <CsrfField /> emits the
+              // signed double-submit token bound to this session.
               <form action="/api/enrol" method="post" className="mt-3">
                 <CsrfField />
                 <input type="hidden" name="course_id" value={c.id} />

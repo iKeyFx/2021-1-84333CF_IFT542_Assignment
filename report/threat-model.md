@@ -82,6 +82,43 @@ now distinguishes them.
 - **Upload size cap still absent** — the other half of T8. Out of scope for Task 3's five
   deliverables, so T8's residual is not yet fully realised.
 
+## Delivered — Task 3, item 26 (corrective controls)
+
+The register in the primary document marks four controls **(C) corrective**. Tasks 2 and 3
+delivered the preventive and detective controls; these four were promised and never built. A
+corrective control is the one you need *after* prevention has already failed — as it had.
+
+| Threat | Promised | Delivered | Enforced at |
+|---|---|---|---|
+| **T1** | `session revocation + runbook (C)` | `ir/revoke-sessions.mjs`, `report/response-runbook.md` | `DELETE FROM sessions`; `src/lib/auth.ts` re-checks every request, so removal is immediate |
+| **T9** | `invalidate sessions on leak (C)` | `ir/rotate-secrets.mjs` | Argon2id re-hash + a new `SESSION_SECRET`, which also invalidates every outstanding CSRF token |
+| **T5** | `forced reset on suspected breach (C)` | `ir/force-reset.mjs`, `credential_resets` | `src/app/api/login/route.ts` — `LEFT JOIN`, folded into the existing failure branch |
+| **T4** | `append-only retention (C)` | `security_events`, `ir/audit-log.mjs` | `db/migrations/003_incident_response.sql` — statement-level triggers raising `42501` |
+
+Two design points carry the weight:
+
+- **The lock is checked after `verifyPassword()`, not before.** One Argon2id operation has already
+  run on every path, and the response is byte-identical to a wrong password and to an unknown
+  account. Checking earlier would be faster for locked accounts and would hand back the
+  enumeration oracle T7 was closed to remove.
+- **The triggers are `FOR EACH STATEMENT`.** A row-level `BEFORE DELETE` never fires on zero
+  matching rows, so `DELETE ... WHERE id = -1` would succeed silently and any test asserting
+  "DELETE is refused" against an empty table would pass vacuously.
+
+Full detail, including honest limitations, is in **Appendix D** of the primary document and in
+`report/incident-record.md`.
+
+### Residual after item 26
+
+- **`--complete` is not a password-reset flow.** It restores the demo password so the exercise
+  repeats. A real system issues a single-use, time-limited, signed token over a verified channel.
+- **`--ingest` is a stand-in log shipper.** The app emits JSON Lines to stdout and never writes to
+  the database — `src/lib/logger.ts` must stay edge-safe because middleware imports it.
+- **Append-only is enforced inside the database it protects.** A full database compromise could
+  drop the trigger; real tamper-evidence needs an independent off-host sink.
+- **No alerting.** Events are emitted and can be ingested, but nothing watches them.
+
 ## Reproduction
 
-See `tests/README.md` and `evidence/task{1,2,3}/README.md`.
+See `tests/README.md` and `evidence/task{1,2,3}/README.md`. Response procedures are in
+`report/response-runbook.md`; every command there has been executed and its real output pasted.

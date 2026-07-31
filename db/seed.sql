@@ -6,8 +6,10 @@
 --  hashed with Argon2id by db/hash-passwords.mjs. See the Credentials section
 --  below.
 --
---  [VULN: Default admin with well-known password — Task 3]
---    admin@campus.local / admin123
+--  [FIXED — Task 3: default admin with a well-known password]
+--    The admin account is still seeded here, but its password is NOT. It is
+--    hashed by db/hash-passwords.mjs from ADMIN_PASSWORD (falling back to a
+--    documented strong dummy). The v0 value `admin123` is retired and rejected.
 -- ============================================================================
 
 -- Clear existing rows (safe to re-run).
