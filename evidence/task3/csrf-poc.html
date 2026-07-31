@@ -7,17 +7,43 @@
   This page is hard-pointed at http://127.0.0.1:3000 and does nothing to any
   other site. It is not a reusable tool.
 
+  [FIXED — Task 3] THIS ATTACK NO LONGER WORKS. The page is kept because it is
+  still the right way to DEMONSTRATE the fix.
+
   HOW TO REPRODUCE (localhost only):
     1. npm run dev, then log in to the app in your browser as a student
        (e.g. ada.learner@campus.local / ada-pw-2025).
     2. In the SAME browser, open this file (double-click, or a file:// URL).
     3. It auto-submits a cross-origin form to /api/profile using your ambient
-       session cookie. With no CSRF token and no SameSite, the request is
-       accepted and your display name is silently overwritten.
-    4. Reload /dashboard to see the change — proof the state change happened
-       without your consent and without a CSRF token.
+       session cookie.
 
-  Reset afterwards: set your display name back on /profile, or `npm run db:reset`.
+  WHAT YOU WILL SEE, AND WHY IT IS NOT A 403
+    Before the fix: 303, and your display name silently overwritten.
+    After the fix:  303 to /login, and NOTHING CHANGED.
+
+    Both are a 303, so read the Network tab and the database, not the status
+    code alone. The server log tells you which:
+
+      {"event":"authz.denied","actor":{"type":"anonymous"},"reason":"no-session"}
+
+    `actor: anonymous` is the whole story. SameSite=Lax stops the browser
+    attaching the session cookie to a cross-site POST at all, so this request
+    arrives with NO IDENTITY and is refused before the CSRF token is ever
+    examined. That is the outermost and strongest of three layers — the attack
+    never gets to use the victim's session.
+
+    It also means a BROWSER CANNOT SHOW the 403 from the token check, because a
+    browser will not send the cookie that would let the request get that far.
+    To see the inner two layers, run:
+
+      node evidence/task3/capture-csrf-layers.mjs
+
+    which forces the cookie through with a Node client (Node does not implement
+    SameSite) and shows the Origin check and the token check each returning 403
+    on their own.
+
+  Confirm nothing changed: reload /dashboard — the real display name is intact.
+  Reset if needed: set your display name back on /profile, or `npm run db:reset`.
 -->
 <!doctype html>
 <html lang="en">
@@ -30,6 +56,14 @@
     <p>
       If you are logged into the app at <code>http://127.0.0.1:3000</code>, this page will submit a
       profile change on your behalf with no CSRF token.
+    </p>
+    <p>
+      <strong>Against the hardened build this fails.</strong> You will land on
+      <code>/login</code> and your display name will be unchanged &mdash; because
+      <code>SameSite=Lax</code> stopped the browser from sending your session cookie at all, so
+      the request arrived anonymous. Expect a <strong>303, not a 403</strong>: a browser cannot
+      reach the token check. Run
+      <code>node evidence/task3/capture-csrf-layers.mjs</code> to see the other two layers.
     </p>
 
     <form id="csrf" action="http://127.0.0.1:3000/api/profile" method="POST">

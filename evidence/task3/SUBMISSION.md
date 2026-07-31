@@ -58,7 +58,8 @@ npm run build && npm start     # for 19 (strict CSP + HSTS)
 | # | File | Command / action | What must be visible |
 |---|------|------------------|----------------------|
 | 15 | `15-xss-neutralised.png` | Browser: `/profile` → set display name to `<img src=x onerror="alert('xss-on-dashboard')">` → save → load `/dashboard`. Then run the psql query below in a terminal. | The dashboard showing the payload **as literal text**, no alert dialog; **and** the psql output proving the DB still holds it verbatim. Both halves in one frame if possible. |
-| 16 | `16-csrf-rejected.png` | Open `evidence/task3/csrf-poc.html` while logged in; show the network tab. | The POST to `/api/profile` returning **403**, and `/dashboard` still showing the real display name |
+| 16 | `16-csrf-rejected.png` | Open `evidence/task3/csrf-poc.html` while logged in; show the Network tab. | The POST to `/api/profile` returning **303 → `/login`**, and `/dashboard` still showing the real display name. **Not a 403** — see below |
+| 16b | `16b-csrf-layers.png` | `node evidence/task3/capture-csrf-layers.mjs` | All three layers: `303` anonymous, `403` bad-origin, `403` missing-token, then the control `303 /profile?saved=1` |
 | 17 | `17-cookie-flags.png` | Browser devtools → Application → Cookies → `127.0.0.1` | The `sid` cookie row with **HttpOnly ✓, Secure ✓, SameSite = Lax**. This is also the proof that `Secure` works over `http://127.0.0.1` |
 | 18 | `18-ssrf-blocked.png` | `node tests/ssrf-demo.mjs` | `HTTP status of preview call: 403`, `URL not allowed`, and the `[SSRF BLOCKED]` line |
 | 19 | `19-security-headers.png` | `npm run build && npm start`, then `curl -I http://127.0.0.1:3000/login` | CSP with `'nonce-…'` and **no `unsafe-`**, plus HSTS, nosniff, `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy` |
@@ -93,6 +94,40 @@ docker compose exec postgres psql -U ift542 -d ift542 \
 **Nothing needs redacting.** All data is fictitious (`@campus.local`, invented names, no PII — see
 `ETHICS.md`). The log samples are already masked by the logger itself. The rotated admin password is
 a documented dummy, not a real secret.
+
+### Screenshot 16 — why the browser shows 303, not 403
+
+The earlier instruction here said to expect a **403**. In a real browser you will
+never see one, and the reason is worth putting in the report rather than treating
+as a failed capture.
+
+`SameSite=Lax` stops the browser attaching the session cookie to a cross-site POST
+**at all**. The forged request therefore arrives with no identity, is refused for
+having no session, and is redirected to `/login`:
+
+```json
+{"event":"authz.denied","actor":{"type":"anonymous"},"outcome":"denied",
+ "method":"POST","path":"/api/profile","reason":"no-session"}
+```
+
+Note `actor: anonymous`. That is the **strongest** of the three layers — the attack
+never gets to use the victim's identity at all — but it means the request never
+reaches the token check, so no 403 can be produced. A browser cannot demonstrate
+layers 2 and 3, because a browser will not send the cookie that would let the
+request get far enough to be judged by them.
+
+`capture-csrf-layers.mjs` (screenshot 16b) forces the cookie through with a Node
+client, which does not implement `SameSite`, and shows the inner two layers holding
+on their own. Together the two screenshots show defence in depth:
+
+| Layer | Control | Forged request gets |
+|---|---|---|
+| 1 | `SameSite=Lax` on the session cookie | cookie never sent → `303 /login`, anonymous |
+| 2 | Origin/Referer check | `403` — `Origin: null` refused even with a valid cookie **and** token |
+| 3 | Signed double-submit token | `403` — missing or tampered token refused |
+
+The `303` in your Network tab **is the pass condition** for screenshot 16. Pair it
+with `/dashboard` still showing the real display name.
 
 ### If a capture shows the wrong thing
 

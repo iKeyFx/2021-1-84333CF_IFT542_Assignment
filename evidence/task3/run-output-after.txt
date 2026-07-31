@@ -59,6 +59,29 @@ The PoC now fails on THREE independent grounds — no token, Origin: null, and
 SameSite=Lax on the session cookie. Each was verified in isolation so the
 layering is visible rather than asserted.
 
+IMPORTANT — WHAT A REAL BROWSER ACTUALLY SHOWS. The captures above use a Node
+client, which does NOT implement SameSite. Opening csrf-poc.html in a browser
+produces a 303 to /login, not a 403, because SameSite=Lax stops the browser
+attaching the session cookie to a cross-site POST at all:
+
+  {"event":"authz.denied","actor":{"type":"anonymous"},"outcome":"denied",
+   "method":"POST","path":"/api/profile","reason":"no-session"}
+
+`actor: anonymous` is the point. The forged request arrives with NO IDENTITY and
+is refused before the token is ever examined — the outermost and strongest of
+the three layers. It also means a browser can never demonstrate layers 2 and 3,
+because it will not send the cookie that would let the request get far enough to
+be judged by them. evidence/task3/capture-csrf-layers.mjs forces the cookie
+through to show those two holding on their own:
+
+  1. SameSite=Lax  (browser)      -> 303 /login, anonymous, nothing changed
+  2. Origin check  (cookie forced)-> 403 {"error":"Request rejected"}  bad-origin
+  3. Token check   (same-origin)  -> 403 {"error":"Request rejected"}  missing-token
+  4. CONTROL: correct cookie + Origin + token -> 303 /profile?saved=1
+
+Step 4 is not decoration. Without it, results 1-3 would be equally satisfied by
+an endpoint that is simply broken for everybody.
+
 A valid token issued for a DIFFERENT session is also refused (403): the token is
 an HMAC over the session id, so it is useless outside the session it was minted
 for. That is what stops an attacker replaying their own legitimately-issued
