@@ -55,6 +55,49 @@ npm run dev                    # for 15-18, 21
 npm run build && npm start     # for 19 (strict CSP + HSTS)
 ```
 
+> ### Two traps before you capture 19
+>
+> **1. Stop the dev server first.** If anything is already listening on 3000, Next does **not**
+> fail — it prints "Port 3000 is in use, trying 3001 instead" and starts there. `curl` to
+> `:3000` then hits the *dev* server and you capture the development policy while believing you
+> captured production. Check the port is free:
+>
+> ```bash
+> curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:3000/login   # want: 000
+> ```
+>
+> **2. `npm start` needs a `.env`.** In production `sessionSecret()` throws when `SESSION_SECRET`
+> is unset — deliberately, that is the fix for the hardcoded secret. Without it the server starts
+> but every request fails.
+>
+> ```bash
+> cp .env.example .env          # Windows PowerShell: Copy-Item .env.example .env
+> ```
+>
+> **How to tell at a glance which policy you captured:**
+>
+> | | development | production |
+> |---|---|---|
+> | `script-src` | has **`'unsafe-eval'`** | nonce only |
+> | `style-src` | has **`'unsafe-inline'`** | `'self'` only |
+> | `connect-src` | has **`ws: wss:`** | `'self'` only |
+> | `upgrade-insecure-requests` | absent | **present** |
+> | `strict-transport-security` | **absent** | present |
+>
+> Any `unsafe-` or `ws:` in the capture means you are on the dev server. The production header,
+> verified:
+>
+> ```
+> content-security-policy: default-src 'self'; script-src 'self' 'nonce-UzY2XexEOcNw1OcHiHU3+A==';
+>   style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; object-src 'none';
+>   base-uri 'self'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests
+> strict-transport-security: max-age=63072000; includeSubDomains
+> x-content-type-options: nosniff
+> x-frame-options: DENY
+> referrer-policy: same-origin
+> permissions-policy: camera=(), microphone=(), geolocation=(), interest-cohort=()
+> ```
+
 | # | File | Command / action | What must be visible |
 |---|------|------------------|----------------------|
 | 15 | `15-xss-neutralised.png` | Browser: `/profile` → set display name to `<img src=x onerror="alert('xss-on-dashboard')">` → save → load `/dashboard`. Then run the psql query below in a terminal. | The dashboard showing the payload **as literal text**, no alert dialog; **and** the psql output proving the DB still holds it verbatim. Both halves in one frame if possible. |
@@ -173,8 +216,9 @@ with `/dashboard` still showing the real display name.
 - **`Request rejected` instead of `URL not allowed`** in 18 — the CSRF check fired before the SSRF
   guard, so the script never reached the thing you are trying to prove. `tests/ssrf-demo.mjs`
   fetches a token first; make sure you are running the current version.
-- **CSP contains `unsafe-eval`** in 19 — that is the *development* policy. Use
-  `npm run build && npm start`.
+- **CSP contains `unsafe-eval`** in 19 — that is the *development* policy. You either did not run
+  `npm run build && npm start`, or you did and **a dev server was still holding port 3000**, so
+  `npm start` quietly moved to 3001 and your `curl` hit the old server. See *Two traps* above.
 - **A `404` page** from any script — stale `.next` route manifest after a force-killed dev server.
   `rm -rf .next && npm run dev`, and confirm with
   `curl -o /dev/null -w "%{http_code}" http://127.0.0.1:3000/login` before re-shooting.
