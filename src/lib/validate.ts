@@ -15,9 +15,10 @@ export const EMAIL_MIN = 3;
 export const EMAIL_MAX = 254; // RFC 5321 reverse-path limit
 
 /**
- * PASSWORD_MIN must stay <= 8. The seeded default admin (admin@campus.local /
- * admin123) is exactly 8 characters and is a deliberate Task 3 vulnerability
- * that must keep working; raising this would silently remove it.
+ * PASSWORD_MIN is a floor on what the app will even attempt to verify. It used
+ * to be pinned at 8 because the Task 3 default admin (`admin123`) was exactly
+ * that long; that account has since been rotated to a strong password, so the
+ * constraint is now a genuine policy choice rather than a workaround.
  *
  * PASSWORD_MAX is a DoS control, not a password policy: without a cap an
  * attacker can POST a multi-megabyte password and make the server spend

@@ -27,3 +27,42 @@ Restored display name to 'Ada Learner'.
 ```
 Set-Cookie: sid=a1e20afc-fb96-42dc-abd3-1eeadb858044; Path=/; HttpOnly; Max-Age=86400
 ```
+
+# Additional "before" captures (Fri Jul 31 16:05 WCAST 2026)
+# Taken later in the session, still against the VULNERABLE build (branch harden/task3
+# before any Task 3 change). Completes the baseline: the original capture above covered
+# SSRF, XSS and the cookie, but not CSRF or the security-header state.
+
+## CSRF — forged cross-site POST is ACCEPTED
+Simulates evidence/task3/csrf-poc.html: a cross-origin form POST to /api/profile carrying
+the victim's ambient session cookie, with `Origin: null` (as a file:// page sends) and no
+CSRF token field.
+```
+  status: 303  location: http://localhost:3000/profile?saved=1
+  dashboard now contains the forged name: true
+  => ACCEPTED. No token, no origin check, no SameSite.
+```
+The state change succeeded: /dashboard renders the attacker-chosen display name.
+
+## Stored XSS — payload rendered as RAW HTML (confirms the sink)
+```
+  raw <img src=x onerror  present : true
+  escaped &lt;img          present : false
+  => EXECUTES. Rendered via dangerouslySetInnerHTML.
+```
+
+## Security headers — NONE are set
+```
+  content-security-policy     : ABSENT
+  strict-transport-security   : ABSENT
+  x-content-type-options      : ABSENT
+  x-frame-options             : ABSENT
+  referrer-policy             : ABSENT
+  permissions-policy          : ABSENT
+```
+
+## Session cookie flags (re-confirmed on this build)
+```
+  sid=b65b2539-295e-421f-ba12-444a2f7d15dc; Path=/; HttpOnly; Max-Age=86400
+  -> no SameSite, no Secure
+```

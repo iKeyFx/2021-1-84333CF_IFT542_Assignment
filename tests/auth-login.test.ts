@@ -6,7 +6,14 @@
 //  limiter (proved separately in rate-limit.test.ts) never interferes here.
 // ============================================================================
 import { describe, it, expect } from "vitest";
-import { login, loginRaw, freshIp, DEMO, GENERIC_ERROR } from "./helpers";
+import {
+  login,
+  loginRaw,
+  freshIp,
+  DEMO,
+  GENERIC_ERROR,
+  RETIRED_ADMIN_PASSWORD,
+} from "./helpers";
 
 const ip = () => ({ ip: freshIp("auth-login") });
 
@@ -33,13 +40,22 @@ describe("valid credentials are accepted", () => {
     }
   });
 
-  it("still logs in the seeded default admin (Task 3 vuln left intact)", async () => {
-    // Guards PASSWORD_MIN <= 8: `admin123` is exactly 8 characters. Raising the
-    // minimum would silently remove a documented Task 3 finding.
+  it("logs in the admin with the rotated strong password", async () => {
     const res = await login(DEMO.admin.email, DEMO.admin.password, ip());
 
     expect(res.status).toBe(200);
     expect(res.body.user.role).toBe("admin");
+  });
+
+  it("REJECTS the retired default admin password (Task 3 fix)", async () => {
+    // `admin123` was the well-known default seeded in the vulnerable build.
+    // Task 3 rotated it; this asserts the old credential is genuinely dead
+    // rather than merely undocumented.
+    const res = await login(DEMO.admin.email, RETIRED_ADMIN_PASSWORD, ip());
+
+    expect(res.status).toBe(401);
+    expect(res.body).toEqual(GENERIC_ERROR);
+    expect(res.sid).toBeNull();
   });
 });
 

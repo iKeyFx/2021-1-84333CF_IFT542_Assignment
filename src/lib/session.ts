@@ -14,7 +14,7 @@ import { randomUUID } from "node:crypto";
 import { cookies } from "next/headers";
 import type { NextRequest } from "next/server";
 import { sql } from "./db";
-import { SESSION_COOKIE } from "./config";
+import { SESSION_COOKIE, COOKIE_SECURE } from "./config";
 
 export type SessionUser = {
   id: number;
@@ -66,19 +66,34 @@ export async function establishSession(
  * Build the Set-Cookie header string by hand so we control EXACTLY which
  * attributes appear.
  *
- * [VULN: No SameSite on session cookie — Task 3]
- * Note the absence of a `SameSite=` attribute and of `Secure`. Only HttpOnly
- * and Path are set, so the cookie is sent on cross-site requests (enabling the
- * CSRF demo against the profile-update and course-registration endpoints).
+ * [FIXED — Task 3: no SameSite / no Secure on the session cookie]
+ * The cookie now carries all four protective attributes:
+ *   HttpOnly  — unreadable from JavaScript, so an XSS foothold cannot steal it
+ *   SameSite=Lax — not sent on cross-site POSTs, which alone defeats the
+ *                  forged form submission in evidence/task3/csrf-poc.html
+ *   Secure    — HTTPS-only. Browsers treat loopback as a potentially
+ *               trustworthy origin, so this still works over http://127.0.0.1
+ *   Path=/    — scoped to the app
+ *
+ * Lax rather than Strict is deliberate: Strict would drop the session on every
+ * inbound link into the app (the user would appear logged out after following
+ * one), and Lax already blocks the cross-site POST that CSRF requires. The
+ * anti-CSRF token in src/lib/csrf.ts is the primary control; this is defence
+ * in depth behind it.
  */
 export function buildSessionCookie(sid: string): string {
-  // Intentionally NO "SameSite=..." and NO "Secure" here.
-  return `${SESSION_COOKIE}=${sid}; Path=/; HttpOnly; Max-Age=86400`;
+  return cookieAttrs(`${SESSION_COOKIE}=${sid}`, 86_400);
 }
 
 /** Header string that clears the session cookie (used by logout). */
 export function buildClearCookie(): string {
-  return `${SESSION_COOKIE}=; Path=/; HttpOnly; Max-Age=0`;
+  return cookieAttrs(`${SESSION_COOKIE}=`, 0);
+}
+
+function cookieAttrs(nameValue: string, maxAge: number): string {
+  const parts = [nameValue, "Path=/", "HttpOnly", "SameSite=Lax", `Max-Age=${maxAge}`];
+  if (COOKIE_SECURE) parts.push("Secure");
+  return parts.join("; ");
 }
 
 /** Look up the current user from the session cookie (server components/routes). */

@@ -17,12 +17,26 @@ export const DATABASE_URL =
 /** The single generic error the API is allowed to return for auth failures. */
 export const GENERIC_ERROR = { error: "Invalid email or password" };
 
+// Vitest workers do not load .env, so read it here or ADMIN_PASSWORD overrides
+// would be invisible to the tests while being live in the app.
+try {
+  process.loadEnvFile();
+} catch {
+  // no .env — the fallback below matches db/hash-passwords.mjs
+}
+
+/** Must match ADMIN_PASSWORD_FALLBACK in db/hash-passwords.mjs. */
+export const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "Adm1n-Str0ng-Dummy-2026-x7QF";
+
+/** The retired default admin password — must now be REJECTED. */
+export const RETIRED_ADMIN_PASSWORD = "admin123";
+
 /** Fictitious seeded credentials (see db/hash-passwords.mjs). */
 export const DEMO = {
   student: { email: "ada.learner@campus.local", password: "ada-pw-2025" },
   student2: { email: "grace.coder@campus.local", password: "grace-pw-2025" },
-  // Deliberate Task 3 vulnerability, kept intact.
-  admin: { email: "admin@campus.local", password: "admin123" },
+  // [FIXED — Task 3] Rotated off the well-known `admin123`.
+  admin: { email: "admin@campus.local", password: ADMIN_PASSWORD },
 };
 
 export const ALL_DEMO_PASSWORDS = [
@@ -32,7 +46,7 @@ export const ALL_DEMO_PASSWORDS = [
   "mira-pw-2025",
   "otto-pw-2025",
   "nova-pw-2025",
-  "admin123",
+  ADMIN_PASSWORD,
 ];
 
 // ---------------------------------------------------------------------------
@@ -42,45 +56,57 @@ export const ALL_DEMO_PASSWORDS = [
 //
 //   1. ACROSS FILES / WITHIN A RUN — a test that makes several FAILED login
 //      attempts must not exhaust a bucket another test depends on. Solved by
-//      giving each file its own host range and handing out a new address per
-//      call via freshIp().
+//      giving each file its own /24, so files cannot collide at all.
 //
 //   2. ACROSS RUNS — the limiter lives in the dev server's memory, and that
 //      server outlives `npm test`. Re-running the suite inside the 60s window
 //      would otherwise inherit the previous run's counters and see 429 where
-//      401 was expected. Solved by randomising the third octet per run, so
-//      every run gets a fresh /24.
+//      401 was expected. Solved by randomising the SECOND octet per run, so
+//      every run gets a fresh /16.
 //
 //  Addresses come from 198.18.0.0/15, the IANA benchmarking range — never
-//  routed, so nothing leaves this machine.
+//  routed, so nothing leaves this machine. Layout: 198.<18|19>.<file>.<host>
+//
+//  NOTE: this used to pack all files into ONE /24 with 50-address bases
+//  (1/50/100/150). That scheme had exactly one slot left — a fifth file at
+//  base 200 was the last that fits, and base 250 would have produced invalid
+//  octets like 198.18.7.298. Task 3 adds five files, so each file now owns a
+//  whole third octet: 254 hosts each, and adding a file is a one-line change.
 // ---------------------------------------------------------------------------
-const RUN_OCTET = 1 + Math.floor(Math.random() * 250);
+const RUN_NET = 18 + Math.floor(Math.random() * 2); // 198.18/16 or 198.19/16
 
-/** Host-range base per file, 50 addresses each. */
-const FILE_BASE: Record<string, number> = {
+/** One third-octet per test file. Add a new file by giving it an unused number. */
+const FILE_OCTET: Record<string, number> = {
+  // Task 2
   "auth-login": 1,
-  "sqli": 50,
-  "session": 100,
-  "rate-limit": 150,
+  "sqli": 2,
+  "session": 3,
+  "rate-limit": 4,
+  // Task 3
+  "xss": 5,
+  "csrf": 6,
+  "headers": 7,
+  "ssrf": 8,
+  "logging": 9,
 };
 
 const counters = new Map<string, number>();
 
 /** A stable address for this file, for tests that need budget to accumulate. */
 export function ipFor(file: string): string {
-  const base = FILE_BASE[file];
-  if (base === undefined) throw new Error(`no test host range registered for "${file}"`);
-  return `198.18.${RUN_OCTET}.${base}`;
+  const octet = FILE_OCTET[file];
+  if (octet === undefined) throw new Error(`no test subnet registered for "${file}"`);
+  return `198.${RUN_NET}.${octet}.254`;
 }
 
-/** A previously-unused address in this file's range. */
+/** A previously-unused address in this file's /24. */
 export function freshIp(file: string): string {
-  const base = FILE_BASE[file];
-  if (base === undefined) throw new Error(`no test host range registered for "${file}"`);
+  const octet = FILE_OCTET[file];
+  if (octet === undefined) throw new Error(`no test subnet registered for "${file}"`);
   const n = (counters.get(file) ?? 0) + 1;
   counters.set(file, n);
-  if (n > 48) throw new Error(`exhausted test addresses for "${file}"`);
-  return `198.18.${RUN_OCTET}.${base + n}`;
+  if (n > 253) throw new Error(`exhausted test addresses for "${file}"`);
+  return `198.${RUN_NET}.${octet}.${n}`;
 }
 
 export type LoginResponse = {

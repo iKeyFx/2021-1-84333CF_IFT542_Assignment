@@ -9,7 +9,7 @@
 //      it deliberately with:  npm run db:reset:legacy
 //
 //   2. FRESH SEED — any profile without a password_hash gets one computed from
-//      DEMO_PASSWORDS. This is the default path (npm run db:reset), on which
+//      demoPasswords(). This is the default path (npm run db:reset), on which
 //      plaintext NEVER touches the database at any instant.
 //
 //  Either way the step finishes by dropping the legacy column, making
@@ -37,22 +37,41 @@ const ARGON2_OPTIONS = {
 };
 
 /**
- * Fictitious demo credentials. These lived in db/seed.sql:26-36 in the
- * v0-vulnerable baseline, where they were INSERTed as plaintext. The values
- * are unchanged — only their storage is.
+ * [FIXED — Task 3: default admin with a well-known password]
  *
- * admin@campus.local / admin123 is a deliberate Task 3 vulnerability (default
- * account with a well-known password) and must stay.
+ * The admin password is no longer the notorious `admin123`. It comes from the
+ * ADMIN_PASSWORD environment variable, falling back to a strong documented
+ * dummy so the artefact stays reproducible for a marker without shipping a
+ * guessable credential.
+ *
+ * MUST be read lazily, inside the function — db/migrate.mjs calls
+ * process.loadEnvFile() at import time, so a module-scope read would capture
+ * the value BEFORE .env is loaded and silently ignore the override.
  */
-export const DEMO_PASSWORDS = {
-  "ada.learner@campus.local": "ada-pw-2025",
-  "grace.coder@campus.local": "grace-pw-2025",
-  "linus.pupil@campus.local": "linus-pw-2025",
-  "mira.scholar@campus.local": "mira-pw-2025",
-  "otto.student@campus.local": "otto-pw-2025",
-  "nova.trainee@campus.local": "nova-pw-2025",
-  "admin@campus.local": "admin123",
-};
+export const ADMIN_PASSWORD_FALLBACK = "Adm1n-Str0ng-Dummy-2026-x7QF";
+
+function adminPassword() {
+  const fromEnv = process.env.ADMIN_PASSWORD;
+  return fromEnv && fromEnv.length > 0 ? fromEnv : ADMIN_PASSWORD_FALLBACK;
+}
+
+/**
+ * Fictitious demo credentials. These lived in db/seed.sql:26-36 in the
+ * v0-vulnerable baseline, where they were INSERTed as plaintext. The student
+ * values are unchanged — only their storage is. The admin value was rotated
+ * in Task 3 (see above).
+ */
+export function demoPasswords() {
+  return {
+    "ada.learner@campus.local": "ada-pw-2025",
+    "grace.coder@campus.local": "grace-pw-2025",
+    "linus.pupil@campus.local": "linus-pw-2025",
+    "mira.scholar@campus.local": "mira-pw-2025",
+    "otto.student@campus.local": "otto-pw-2025",
+    "nova.trainee@campus.local": "nova-pw-2025",
+    "admin@campus.local": adminPassword(),
+  };
+}
 
 /** True if `credentials` still has the legacy plaintext column. */
 async function hasLegacyColumn(sql) {
@@ -76,10 +95,11 @@ export async function seedLegacyPlaintext(sql) {
   }
 
   const profiles = await sql`SELECT id, email FROM profiles ORDER BY id`;
+  const passwords = demoPasswords();
   let staged = 0;
 
   for (const { id, email } of profiles) {
-    const plain = DEMO_PASSWORDS[email];
+    const plain = passwords[email];
     if (!plain) continue;
     await sql`
       INSERT INTO credentials (profile_id, password)
@@ -129,8 +149,10 @@ export async function migrateCredentials(sql) {
     ORDER BY p.id
   `;
 
+  const passwords = demoPasswords();
+
   for (const { id, email } of missing) {
-    const plain = DEMO_PASSWORDS[email];
+    const plain = passwords[email];
     if (!plain) {
       console.warn(`  ! no demo password for ${email} — skipped`);
       continue;

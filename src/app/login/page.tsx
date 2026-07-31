@@ -82,7 +82,7 @@ export default function LoginPage() {
       <div className="mt-6 text-xs text-slate-500 space-y-1">
         <p className="font-medium text-slate-700">Demo accounts (fictitious):</p>
         <p>Student — ada.learner@campus.local / ada-pw-2025</p>
-        <p>Admin — admin@campus.local / admin123</p>
+        <p>Admin — admin@campus.local / (see README; rotated in Task 3)</p>
       </div>
     </div>
   );

@@ -13,7 +13,12 @@ const BASE = "http://127.0.0.1:3000";
 const loginRes = await fetch(`${BASE}/api/login`, {
   method: "POST",
   headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({ email: "admin@campus.local", password: "admin123" }),
+  body: JSON.stringify({
+    email: "admin@campus.local",
+    // [Task 3] rotated off the well-known default; matches
+    // ADMIN_PASSWORD_FALLBACK in db/hash-passwords.mjs.
+    password: process.env.ADMIN_PASSWORD || "Adm1n-Str0ng-Dummy-2026-x7QF",
+  }),
 });
 const cookies = loginRes.headers.getSetCookie?.() ?? [];
 const sid = cookies.map((c) => c.split(";")[0]).join("; ");
