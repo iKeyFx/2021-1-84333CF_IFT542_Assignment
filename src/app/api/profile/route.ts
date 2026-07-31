@@ -37,7 +37,7 @@ export async function POST(req: NextRequest) {
 
   const csrf = await requireCsrf(req);
   if (!csrf.ok) {
-    logger.csrfRejected({ ip, method: "POST", path: PATH, actor, reason: csrf.reason });
+    logger.csrfRejected({ ip, method: "POST", path: PATH, actor, reason: csrf.reason, observed: csrf.observed });
     return NextResponse.json({ error: "Request rejected" }, { status: 403 });
   }
 

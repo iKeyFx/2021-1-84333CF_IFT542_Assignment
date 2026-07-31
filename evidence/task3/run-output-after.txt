@@ -143,7 +143,7 @@ an injected resolver, including IPv4-mapped IPv6 (::ffff:127.0.0.1) and the
   strict-transport-security: max-age=63072000; includeSubDomains
   x-content-type-options: nosniff
   x-frame-options: DENY
-  referrer-policy: no-referrer
+  referrer-policy: same-origin
   permissions-policy: camera=(), microphone=(), geolocation=(), interest-cohort=()
 
 BEFORE: every one of these was ABSENT.
@@ -547,3 +547,62 @@ because src/middleware.ts imports it, and the edge runtime has no node: builtins
 and no DB handle. --ingest is a LOG SHIPPER standing in for the real one; in
 production it is replaced by Vector / Fluent Bit into WORM storage with a
 retention lock. Claiming otherwise would misrepresent the control.
+
+--- 4e. A CONTROL CONFLICT FOUND BY USING THE APP IN A BROWSER ----------------
+Referrer-Policy was originally "no-referrer" — the strictest value, and the
+obvious choice. It broke every plain <form> POST in the application.
+
+Per the Fetch standard, the browser derives the ORIGIN header of a non-CORS,
+non-GET request from the document's REFERRER POLICY. Under "no-referrer" it
+sends the literal `Origin: null` — byte-identical to what a file:// page sends,
+and exactly what src/lib/csrf.ts checkOrigin() rejects as a CSRF attempt.
+
+Observed, from the server's own structured log:
+
+  {"event":"csrf.rejected","actor":{"type":"user","profile_id":1,"role":"student"},
+   "outcome":"denied","method":"POST","path":"/api/profile","reason":"bad-origin",
+   "observed":"origin=null referer=- host=127.0.0.1:3000 nextUrlHost=localhost:3000"}
+
+Two Task 3 controls were fighting each other: the header hardening (§4a) made
+the CSRF defence (§2) reject legitimate traffic. Profile save, course enrol,
+document upload and both admin forms all returned 403 in a real browser.
+
+WHY THE TEST SUITE DID NOT CATCH IT — worth recording honestly. Node's fetch
+sets Origin explicitly and does not implement Referrer-Policy at all, so every
+automated test sent a correct Origin and passed. 157 green tests said the app
+worked; it did not. The bug was found by a human clicking Save while capturing
+screenshot 15.
+
+FIX: Referrer-Policy is now "same-origin" (src/lib/security-headers.ts and
+next.config.js, which must agree). This costs nothing in CSRF strength:
+
+  - our own pages send their real Origin, so legitimate posts pass;
+  - a cross-site attacker's page is governed by ITS OWN referrer policy, so it
+    sends either `null` or its own origin — both still rejected;
+  - nothing is sent to other origins, so the privacy property is retained.
+
+tests/csrf.test.ts still passes all 18 assertions, including `Origin: null`
+-> 403 paired with a database read proving no state changed.
+
+A regression guard was added in tests/security-headers.test.ts. It cannot
+simulate a browser, so it asserts the policy is not "no-referrer" and is one of
+the values that leave Origin intact — the cheapest available proxy for a class
+of bug this suite is structurally unable to observe.
+
+--- 4f. POST-FORM REDIRECTS STAY ON THE REQUESTED HOST ------------------------
+The same investigation surfaced `nextUrlHost=localhost:3000` alongside
+`host=127.0.0.1:3000`. Next normalises req.url to the loopback NAME regardless
+of what the client addressed, so handlers returning
+`NextResponse.redirect(new URL("/profile?saved=1", req.url))` sent a browser on
+127.0.0.1 to localhost — a DIFFERENT COOKIE JAR. The browser arrived with no
+sid, middleware saw an anonymous request, and the user was bounced to /login,
+appearing logged out after every successful save.
+
+Fixed with seeOther() in src/lib/redirect.ts, which emits a RELATIVE Location
+(RFC 7231 §7.1.2). The browser resolves it against the URL it is already on, so
+it is correct for any hostname the app is reached by. Deliberately not built
+from the Host header: that would EMIT a client-controlled value in a Location
+header, which is an open redirect behind any proxy that does not pin Host.
+checkOrigin() reads the Host header, but only ever COMPARES it.
+
+  Location: /profile?saved=1        (was: http://localhost:3000/profile?saved=1)

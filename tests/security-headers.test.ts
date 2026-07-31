@@ -51,8 +51,34 @@ describe("page responses carry the security headers", () => {
 
     expect(headers.get("x-content-type-options")).toBe("nosniff");
     expect(headers.get("x-frame-options")).toBe("DENY");
-    expect(headers.get("referrer-policy")).toBe("no-referrer");
+    expect(headers.get("referrer-policy")).toBe("same-origin");
     expect(headers.get("permissions-policy")).toContain("camera=()");
+  });
+
+  // ---------------------------------------------------------------------
+  //  REGRESSION GUARD — two controls that silently broke each other.
+  //
+  //  `Referrer-Policy: no-referrer` looks like the strictest, most obviously
+  //  correct choice, and it shipped. But the Fetch standard derives the ORIGIN
+  //  header of a non-CORS, non-GET request from the document's referrer policy,
+  //  and under "no-referrer" the browser sends the literal `Origin: null` —
+  //  indistinguishable from a file:// page, which is precisely what
+  //  checkOrigin() rejects. Every plain <form> POST in the app returned 403 in
+  //  a real browser.
+  //
+  //  NOTHING IN THIS SUITE COULD SEE IT: Node's fetch sets Origin explicitly
+  //  and does not implement Referrer-Policy. The bug was found by a human
+  //  clicking Save. This assertion is the cheapest available proxy — it cannot
+  //  simulate the browser, but it does stop the value silently going back.
+  // ---------------------------------------------------------------------
+  it("does NOT use a referrer policy that makes browsers send Origin: null", async () => {
+    const { headers } = await getPage("/login");
+    const policy = headers.get("referrer-policy");
+
+    // "no-referrer" is the one value that breaks form POSTs. The other strict
+    // values leave the Origin header intact for same-origin requests.
+    expect(policy).not.toBe("no-referrer");
+    expect(["same-origin", "strict-origin", "strict-origin-when-cross-origin"]).toContain(policy);
   });
 });
 
@@ -66,7 +92,7 @@ describe("API responses carry headers too (via next.config.js)", () => {
 
     expect(res.headers.get("x-content-type-options")).toBe("nosniff");
     expect(res.headers.get("x-frame-options")).toBe("DENY");
-    expect(res.headers.get("referrer-policy")).toBe("no-referrer");
+    expect(res.headers.get("referrer-policy")).toBe("same-origin");
     expect(res.headers.get("content-security-policy")).toContain("default-src 'none'");
   });
 });

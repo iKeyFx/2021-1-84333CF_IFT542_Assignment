@@ -154,7 +154,18 @@ export function checkOrigin(req: NextRequest): boolean {
 
 export type CsrfResult =
   | { ok: true; form: FormData | null }
-  | { ok: false; reason: "bad-origin" | "missing-token" | "bad-token" };
+  | {
+      ok: false;
+      reason: "bad-origin" | "missing-token" | "bad-token";
+      /**
+       * What was actually compared, for the server-side log only. A responder
+       * seeing `csrf.rejected` needs to know WHICH origin was refused —
+       * "an origin was rejected" is not actionable, and the difference between
+       * a genuine attack and the app being reached by an unexpected hostname
+       * is invisible without it. Never returned to the client.
+       */
+      observed?: string;
+    };
 
 /**
  * Verify CSRF for a state-changing request.
@@ -166,7 +177,17 @@ export type CsrfResult =
  * calling req.formData() again.
  */
 export async function requireCsrf(req: NextRequest): Promise<CsrfResult> {
-  if (!checkOrigin(req)) return { ok: false, reason: "bad-origin" };
+  if (!checkOrigin(req)) {
+    return {
+      ok: false,
+      reason: "bad-origin",
+      observed:
+        `origin=${req.headers.get("origin") ?? "-"} ` +
+        `referer=${req.headers.get("referer") ?? "-"} ` +
+        `host=${req.headers.get("host") ?? "-"} ` +
+        `nextUrlHost=${req.nextUrl.host}`,
+    };
+  }
 
   const sid = req.cookies.get(SESSION_COOKIE)?.value ?? null;
   const cookieToken = req.cookies.get(CSRF_COOKIE)?.value ?? null;

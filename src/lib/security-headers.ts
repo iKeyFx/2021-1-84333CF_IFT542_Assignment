@@ -72,7 +72,28 @@ export function staticSecurityHeaders(isDev: boolean): Record<string, string> {
     // Legacy clickjacking control; CSP frame-ancestors is the real one.
     "X-Frame-Options": "DENY",
     // Do not leak the current URL (which can carry ids) to other origins.
-    "Referrer-Policy": "no-referrer",
+    //
+    // MUST NOT BE "no-referrer", even though that is the strictest value.
+    //
+    // Per the Fetch standard, the browser derives the ORIGIN header of a
+    // non-CORS, non-GET request — i.e. every plain HTML <form> POST — from the
+    // document's REFERRER POLICY. Under "no-referrer" it sends the literal
+    // `Origin: null`, which is byte-identical to what a file:// page sends and
+    // is exactly what checkOrigin() rejects as a CSRF attempt.
+    //
+    // With "no-referrer" set here, every form in this app (profile, enrol,
+    // upload, admin courses, admin enrolments) was refused with 403
+    // {"error":"Request rejected"} in a real browser, while the test suite
+    // stayed green: Node's fetch sets Origin explicitly and does not implement
+    // Referrer-Policy at all. Two Task 3 controls were fighting each other and
+    // only a browser could see it.
+    //
+    // "same-origin" keeps the privacy property that matters (nothing at all is
+    // sent to other origins) and costs nothing in CSRF strength: our own pages
+    // now send their real Origin, while a cross-site attacker's page is
+    // governed by ITS OWN referrer policy, so it either sends `null` or its own
+    // origin — both rejected. See tests/security-headers.test.ts.
+    "Referrer-Policy": "same-origin",
     // This app uses none of these APIs; deny them outright.
     "Permissions-Policy": "camera=(), microphone=(), geolocation=(), interest-cohort=()",
   };

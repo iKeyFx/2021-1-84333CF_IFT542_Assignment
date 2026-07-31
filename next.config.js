@@ -8,7 +8,11 @@ const isDev = process.env.NODE_ENV !== "production";
 const staticHeaders = [
   { key: "X-Content-Type-Options", value: "nosniff" },
   { key: "X-Frame-Options", value: "DENY" },
-  { key: "Referrer-Policy", value: "no-referrer" },
+  // MUST match staticSecurityHeaders() in src/lib/security-headers.ts, and MUST
+  // NOT be "no-referrer" — under that policy browsers send `Origin: null` on
+  // every plain <form> POST, which checkOrigin() rejects as a CSRF attempt. See
+  // the long comment in that file.
+  { key: "Referrer-Policy", value: "same-origin" },
   {
     key: "Permissions-Policy",
     value: "camera=(), microphone=(), geolocation=(), interest-cohort=()",
