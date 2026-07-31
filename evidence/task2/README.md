@@ -53,7 +53,43 @@ in its `before:` pane — that is the migration's input. Either blur those three
 submitting, or cite `run-output-after.txt` §2b (already redacted) instead. Do **not** redact
 `run-output.txt`: there the cleartext is the v0 vulnerability evidence.
 
+**Nothing else needs redacting.** All the data in this artefact is fictitious (`@campus.local`,
+invented names, no PII — see `ETHICS.md`). In capture 07 the digests are already truncated by
+`left(...,46)`, so only the `$argon2id$` prefix and the work-factor parameters are visible, never a
+full hash. Captures 08 and 10 show injection payloads and generic errors, which is the point.
+
 Screenshot 09 is the only one needing a browser; the rest are terminal captures.
+
+### If a capture shows a 404 page instead of the expected output
+
+Symptom: `node tests/sqli-login.mjs` prints the payload, then dumps a raw HTML `404: This page
+could not be found` page and crashes (the v0 script calls `res.json()` on what it assumes is JSON).
+
+Cause: a stale `.next` route manifest — the dev server is up and serving pages, but `/api/login`
+is not in its compiled route table. This happens if a previous dev server was force-killed while
+compiling (for example by the Vitest global-setup teardown, which uses `taskkill /T /F`).
+
+Fix — restart the dev server; it recompiles the route:
+
+```bash
+npm run dev
+```
+
+If it persists, clear the build cache first:
+
+```bash
+rm -rf .next && npm run dev      # PowerShell: Remove-Item -Recurse -Force .next
+```
+
+Confirm before re-shooting:
+
+```bash
+curl -s -o nul -w "%{http_code}" -X POST -H "Content-Type: application/json" ^
+  -d "{\"email\":\"ada.learner@campus.local\",\"password\":\"ada-pw-2025\"}" ^
+  http://127.0.0.1:3000/api/login
+```
+
+`200` means the route is live. A `404` means it is still stale — do not take the screenshot yet.
 
 ---
 
