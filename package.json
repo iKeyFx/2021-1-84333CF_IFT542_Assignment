@@ -14,6 +14,11 @@
     "db:migrate": "node db/migrate.mjs",
     "db:reset": "docker compose up -d && node db/wait.mjs && node db/migrate.mjs",
     "db:reset:legacy": "docker compose up -d && node db/wait.mjs && node db/migrate.mjs --legacy-plaintext",
+    "ir:status": "node ir/status.mjs",
+    "ir:revoke-sessions": "node ir/revoke-sessions.mjs",
+    "ir:rotate-secrets": "node ir/rotate-secrets.mjs",
+    "ir:force-reset": "node ir/force-reset.mjs",
+    "ir:audit-log": "node ir/audit-log.mjs",
     "test": "vitest run",
     "test:watch": "vitest"
   },

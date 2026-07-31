@@ -48,12 +48,37 @@ export default async function setup() {
   const sql = postgres(DATABASE_URL, { max: 1, connect_timeout: 5, onnotice: () => {} });
   try {
     await sql`SELECT password_hash FROM credentials LIMIT 1`;
+    // Migration 003 (incident response) must be present too, or
+    // tests/incident-response.test.ts fails with a raw driver error.
+    await sql`SELECT 1 FROM credential_resets LIMIT 1`;
+    await sql`SELECT 1 FROM security_events LIMIT 1`;
   } catch {
     throw new Error(
       "Database is not ready or not migrated.\n" +
         "  Run:  npm run db:reset\n" +
         `  (tried ${DATABASE_URL})`
     );
+  }
+
+  // ---- 1b. No account may start the run LOCKED -----------------------------
+  // A crashed incident-response test could leave a credential_resets row
+  // behind. Every subsequent run would then see that account's login refused
+  // and blame the login handler — a confusing failure a long way from its
+  // cause. Fail here instead, with the command that fixes it.
+  try {
+    const locked = await sql<{ email: string }[]>`
+      SELECT p.email FROM credential_resets r JOIN profiles p ON p.id = r.profile_id
+      ORDER BY p.email
+    `;
+    if (locked.length > 0) {
+      throw new Error(
+        `${locked.length} account(s) are locked pending a credential reset:\n` +
+          locked.map((r) => `    ${r.email}`).join("\n") +
+          "\n  A previous incident-response test probably did not clean up.\n" +
+          "  Clear them with:  npm run db:reset\n" +
+          "  (or: npm run ir:force-reset -- --complete --all --incident CLEANUP --yes)"
+      );
+    }
   } finally {
     await sql.end({ timeout: 1 }).catch(() => {});
   }

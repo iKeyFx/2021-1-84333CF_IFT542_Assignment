@@ -14,8 +14,11 @@ import {
   __clearAllRateLimits,
 } from "@/lib/rate-limit";
 
-// Stable for this run so the bucket accumulates; randomised BETWEEN runs so a
-// re-run inside the 60s window does not inherit the previous run's counter.
+// Stable for this run so the bucket accumulates; drawn from one of 256 per-run
+// address slices so a re-run inside the 60s window does not inherit the
+// previous run's counter. This file is the reason that entropy has to be real:
+// it is the only one that deliberately exhausts a bucket, so it is the first to
+// fail when two runs collide. See the allocator note in helpers.ts.
 const THROTTLED_IP = ipFor("rate-limit");
 const OTHER_IP = freshIp("rate-limit");
 

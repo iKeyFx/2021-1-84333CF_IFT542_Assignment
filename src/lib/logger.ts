@@ -116,6 +116,21 @@ export const logger = {
     emit("info", "auth.login.succeeded", "allowed", f);
   },
 
+  /**
+   * The password was CORRECT but the account is locked pending a credential
+   * reset (ir/force-reset.mjs --require). Logged separately from
+   * auth.login.failed because it is the operationally interesting case during
+   * an incident: someone is presenting a valid password for an account we
+   * believe to be compromised — either the real user, or the attacker using
+   * the credentials they stole.
+   *
+   * The CLIENT still receives the same generic 401. This distinction exists
+   * only in the server log.
+   */
+  loginBlocked(f: SecurityEvent & { email?: string }) {
+    emit("warn", "auth.login.blocked", "denied", f);
+  },
+
   /** An authenticated-or-anonymous caller was refused for lack of privilege. */
   authzDenied(f: SecurityEvent) {
     emit("warn", "authz.denied", "denied", f);

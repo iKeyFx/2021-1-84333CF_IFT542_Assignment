@@ -2,10 +2,10 @@
 //  Shared helpers for the Task 2 hardening tests.
 //
 //  RATE-LIMIT ISOLATION: the login endpoint throttles per IP, so every test
-//  file sends its own X-Forwarded-For address (RFC 5737 documentation range,
-//  203.0.113.0/24). No file can exhaust another file's budget, and no test
+//  file sends its own X-Forwarded-For address from the IANA benchmarking range
+//  198.18.0.0/15. No file can exhaust another file's budget, and no test
 //  backdoor endpoint is needed — adding a state-clearing route to a security
-//  deliverable would itself be a vulnerability.
+//  deliverable would itself be a vulnerability. See the allocator below.
 // ============================================================================
 import postgres from "postgres";
 
@@ -65,17 +65,40 @@ export const ALL_DEMO_PASSWORDS = [
 //      every run gets a fresh /16.
 //
 //  Addresses come from 198.18.0.0/15, the IANA benchmarking range — never
-//  routed, so nothing leaves this machine. Layout: 198.<18|19>.<file>.<host>
+//  routed, so nothing leaves this machine.
 //
-//  NOTE: this used to pack all files into ONE /24 with 50-address bases
-//  (1/50/100/150). That scheme had exactly one slot left — a fifth file at
-//  base 200 was the last that fits, and base 250 would have produced invalid
-//  octets like 198.18.7.298. Task 3 adds five files, so each file now owns a
-//  whole third octet: 254 hosts each, and adding a file is a one-line change.
+//  HISTORY, because the layout has been wrong twice:
+//
+//   v1  All files packed into ONE /24 with 50-address bases (1/50/100/150).
+//       Exactly one slot was left, and a fifth file at base 250 would have
+//       produced invalid octets like 198.18.7.298.
+//   v2  One whole third-octet per file: 198.<18|19>.<file>.<host>. This fixed
+//       problem (1) but left problem (2) barely addressed — the ONLY per-run
+//       entropy was the second octet, i.e. TWO possible values. Two runs inside
+//       the 60s window therefore collided half the time, and rate-limit.test.ts
+//       (the one file that deliberately exhausts a bucket at a STABLE address)
+//       failed on roughly every other back-to-back `npm test`. The comment
+//       claiming addresses were "randomised BETWEEN runs" was true in intent
+//       and worth about one bit in practice.
+//   v3  (this) The last three octets are treated as one flat index:
+//
+//         index = RUN_SLICE*512 + fileIndex*BLOCK + host
+//         198.(18 + index>>16).((index>>8) & 255).(index & 255)
+//
+//       RUN_SLICE is 0..255, so there are 256 distinct address spaces and a
+//       back-to-back re-run collides with probability 1/256 rather than 1/2.
+//       Each file gets BLOCK = 32 addresses per run, and asking for a 33rd
+//       throws rather than silently wrapping into the next file's block.
 // ---------------------------------------------------------------------------
-const RUN_NET = 18 + Math.floor(Math.random() * 2); // 198.18/16 or 198.19/16
 
-/** One third-octet per test file. Add a new file by giving it an unused number. */
+/** Addresses per test file per run. */
+const BLOCK = 32;
+/** Files per run slice. 16 * 32 = 512 addresses per slice; 131072/512 = 256. */
+const MAX_FILES = 16;
+/** Re-rolled on every `npm test`, giving 256 non-overlapping address spaces. */
+const RUN_SLICE = Math.floor(Math.random() * 256);
+
+/** One block per test file. Add a new file by giving it an unused number 0-15. */
 const FILE_OCTET: Record<string, number> = {
   // Task 2
   "auth-login": 1,
@@ -88,25 +111,49 @@ const FILE_OCTET: Record<string, number> = {
   "headers": 7,
   "ssrf": 8,
   "logging": 9,
+  // Task 3 — item 26
+  "incident-response": 10,
 };
 
 const counters = new Map<string, number>();
 
-/** A stable address for this file, for tests that need budget to accumulate. */
-export function ipFor(file: string): string {
-  const octet = FILE_OCTET[file];
-  if (octet === undefined) throw new Error(`no test subnet registered for "${file}"`);
-  return `198.${RUN_NET}.${octet}.254`;
+/** Address `host` (0..BLOCK-1) from `file`'s block in this run's slice. */
+function address(file: string, host: number): string {
+  const fileIndex = FILE_OCTET[file];
+  if (fileIndex === undefined) throw new Error(`no test subnet registered for "${file}"`);
+  if (fileIndex >= MAX_FILES) {
+    throw new Error(`file index ${fileIndex} for "${file}" exceeds MAX_FILES=${MAX_FILES}`);
+  }
+  if (host < 0 || host >= BLOCK) {
+    throw new Error(
+      `exhausted test addresses for "${file}": ${BLOCK} per run. ` +
+        `Raise BLOCK (and lower MAX_FILES to keep BLOCK*MAX_FILES <= 512).`
+    );
+  }
+  const index = RUN_SLICE * (BLOCK * MAX_FILES) + fileIndex * BLOCK + host;
+  return `198.${18 + (index >>> 16)}.${(index >>> 8) & 0xff}.${index & 0xff}`;
 }
 
-/** A previously-unused address in this file's /24. */
+/**
+ * A stable address for this file, for tests that need budget to ACCUMULATE
+ * across several requests (only rate-limit.test.ts). Constant within a run,
+ * different on the next run.
+ */
+export function ipFor(file: string): string {
+  return address(file, BLOCK - 1);
+}
+
+/** A previously-unused address in this file's block. */
 export function freshIp(file: string): string {
-  const octet = FILE_OCTET[file];
-  if (octet === undefined) throw new Error(`no test subnet registered for "${file}"`);
   const n = (counters.get(file) ?? 0) + 1;
   counters.set(file, n);
-  if (n > 253) throw new Error(`exhausted test addresses for "${file}"`);
-  return `198.${RUN_NET}.${octet}.${n}`;
+  // BLOCK-1 is reserved for ipFor(), so freshIp() must never reach it.
+  if (n >= BLOCK - 1) {
+    throw new Error(
+      `exhausted test addresses for "${file}": ${BLOCK - 2} fresh per run (BLOCK=${BLOCK})`
+    );
+  }
+  return address(file, n);
 }
 
 export type LoginResponse = {

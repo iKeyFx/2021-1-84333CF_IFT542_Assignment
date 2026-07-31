@@ -26,6 +26,8 @@
 //   - Origin/Referer check (the token itself is not required here — login is
 //     pre-session, and the Task 2 PoC scripts post to it directly).
 //   - All logging goes through the structured logger; the email is masked.
+//   - Incident-response lock (item 26): a LEFT JOIN on credential_resets makes
+//     ir/force-reset.mjs --require actually deny the login. See step 4.
 // ============================================================================
 import { NextResponse, type NextRequest } from "next/server";
 import { sql } from "@/lib/db";
@@ -54,6 +56,11 @@ type AuthRow = {
   role: "student" | "admin";
   display_name: string;
   password_hash: string;
+  /**
+   * True when an incident responder has locked this account pending a
+   * credential reset (ir/force-reset.mjs --require). See step 4 below.
+   */
+  must_reset: boolean;
 };
 
 export async function POST(req: NextRequest) {
@@ -96,12 +103,20 @@ export async function POST(req: NextRequest) {
   //   ' OR '1'='1' --
   // is compared as a literal email address, matches nothing, and cannot change
   // the structure of the statement.
+  //
+  // The LEFT JOIN on credential_resets adds the incident-response lock
+  // (Task 3 item 26). It is a primary-key lookup folded into the statement that
+  // was already being issued, so it costs no extra round trip — which matters,
+  // because a second query would make a locked account measurably slower and
+  // reintroduce the timing oracle Task 2 removed.
   let rows: AuthRow[];
   try {
     rows = await sql<AuthRow[]>`
-      SELECT p.id, p.email, p.role, p.display_name, c.password_hash
+      SELECT p.id, p.email, p.role, p.display_name, c.password_hash,
+             (r.profile_id IS NOT NULL) AS must_reset
       FROM profiles p
       JOIN credentials c ON c.profile_id = p.id
+      LEFT JOIN credential_resets r ON r.profile_id = p.id
       WHERE p.email = ${input.email}
       LIMIT 1
     `;
@@ -119,12 +134,32 @@ export async function POST(req: NextRequest) {
   // with the wrong password.
   const ok = await verifyPassword(account?.password_hash ?? null, input.password);
 
-  if (!account || !ok) {
+  // `must_reset` is checked HERE — after the Argon2id verification, inside the
+  // existing failure branch — and the placement is load-bearing:
+  //
+  //   1. NOT A TIMING ORACLE. One Argon2id operation has already run on every
+  //      path, so a locked account does not answer faster than a wrong password.
+  //      Returning early on the lock would make it measurably quicker.
+  //   2. NOT A RESPONSE ORACLE. Same status, same body, no Set-Cookie. An
+  //      attacker cannot learn which accounts a responder has flagged, which
+  //      would otherwise tell them exactly which stolen credentials still work.
+  //   3. The distinction survives only in the SERVER LOG, as auth.login.blocked.
+  //
+  // A helpful "your account is locked, check your email" would hand back the
+  // enumeration oracle Task 2 spent its effort removing.
+  if (!account || !ok || account.must_reset) {
     // The email is MASKED by the logger (a***@campus.local). The previous
     // implementation logged it verbatim, which put PII in the log file.
-    logger.loginFailed({ ip, method: "POST", path: PATH, actor: null, email: input.email, reason: account ? "bad-password" : "unknown-account" });
+    const fields = { ip, method: "POST", path: PATH, actor: null, email: input.email };
+    if (account && ok) {
+      // Correct password presented to a locked account — the case a responder
+      // most wants to see during an incident.
+      logger.loginBlocked({ ...fields, reason: "reset-required" });
+    } else {
+      logger.loginFailed({ ...fields, reason: account ? "bad-password" : "unknown-account" });
+    }
     recordFailure(rateKey);
-    // Identical response for "no such account" and "wrong password".
+    // Identical response for "no such account", "wrong password" and "locked".
     return NextResponse.json(GENERIC_ERROR, { status: 401 });
   }
 
