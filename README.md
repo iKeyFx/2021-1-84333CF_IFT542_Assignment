@@ -10,8 +10,22 @@ TypeScript + Tailwind**, backed by **local PostgreSQL** (docker-compose) and **p
 
 **Build status:** **all planted defects are remediated.** Task 2 fixed the authentication and
 database findings; Task 3 fixed the application and configuration findings, added security
-logging, and built the incident-response controls. Tags: `v0-vulnerable` (untouched baseline) →
-`v1-hardened-task2` → `v2-hardened-task3` → `v3-incident-response`.
+logging, and built the incident-response controls.
+
+| Tag | State |
+| --- | --- |
+| `v0-vulnerable` | untouched baseline |
+| `v1-hardened-task2` | authentication + database findings fixed |
+| `v2-hardened-task3` | application + configuration findings fixed, logging added |
+| `v3-incident-response` | corrective controls, incident record, runbook, signed ethics |
+| **`v4-browser-fixes`** | **← use this one.** Two browser-only defects fixed |
+
+**Check out `v4-browser-fixes`, not an earlier tag.** Every tag before it is broken in a real
+browser: `Referrer-Policy: no-referrer` made browsers send `Origin: null` on plain form POSTs,
+which the CSRF Origin check correctly rejects — so profile save, enrol, upload and both admin
+forms returned 403. The full test suite could not see it, because Node's `fetch` sets `Origin`
+explicitly and does not implement `Referrer-Policy`. Details in `evidence/task3/run-output-after.txt`
+§4e.
 
 ## Features
 
