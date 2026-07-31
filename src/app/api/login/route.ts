@@ -1,114 +1,127 @@
 // ============================================================================
-//  POST /api/login  — the CENTREPIECE of the exercise.
+//  POST /api/login  — HARDENED (Task 2).
 //
-//  This single handler concentrates the Task 2 authentication vulnerabilities:
-//   1. SQL injection      — the login SQL is built by string-concatenating the
-//                           raw email/password into sql.unsafe(...).
-//   2. Plaintext password — the password is compared as plaintext in SQL.
-//   3. Verbose errors     — DB errors, stack traces and the raw query are
-//                           returned to the client (gated by DEBUG, on).
-//   4. User enumeration   — failed logins reveal WHICH field was wrong.
-//   5. No rate limiting   — there is no throttle/lockout on repeated attempts.
-//   6. No session regen    — the presented sid is reused (session fixation).
+//  This is the "after" side of the before/after demonstration. Compare against
+//  the same path at tag `v0-vulnerable`:  git diff v0-vulnerable -- this file
 //
-//  A hardened version (parameterized query, hashed+salted password compare,
-//  generic error, rate limit, session rotation) will replace this in the
-//  follow-up session for the before/after demo.
+//  Every Task 2 defect that lived here is remediated:
+//   1. SQL injection      -> [FIXED] parameterized postgres.js tagged template;
+//                            sql.unsafe() and string concatenation are gone.
+//   2. Plaintext password -> [FIXED] account is fetched BY EMAIL, then the
+//                            password is checked with argon2.verify() against a
+//                            stored Argon2id digest. See src/lib/password.ts.
+//   3. Verbose errors     -> [FIXED] driver messages, stack traces and the raw
+//                            query are logged server-side only; the client gets
+//                            a fixed string.
+//   4. User enumeration   -> [FIXED] the second email-only lookup is deleted.
+//                            Unknown-email and wrong-password return byte-
+//                            identical bodies, and both run one Argon2id
+//                            verification so they cost the same time too.
+//   5. No rate limiting   -> [FIXED] per-IP fixed window, checked before any DB
+//                            or hashing work. See src/lib/rate-limit.ts.
+//   6. No session regen   -> [FIXED] establishSession() mints a fresh id and
+//                            destroys the presented one. See src/lib/session.ts.
+//
+//  Still deliberately vulnerable (Task 3, out of scope here): the session
+//  cookie carries no SameSite/Secure, DEBUG is on globally, and the seeded
+//  admin@campus.local / admin123 account remains.
 // ============================================================================
 import { NextResponse, type NextRequest } from "next/server";
 import { sql } from "@/lib/db";
-import { DEBUG } from "@/lib/config";
+import { verifyPassword } from "@/lib/password";
+import { validateCredentials } from "@/lib/validate";
+import { checkRateLimit, recordFailure, resetRateLimit, clientIp } from "@/lib/rate-limit";
 import { establishSession, buildSessionCookie, getPresentedSid } from "@/lib/session";
 
+// argon2 is a native module — pin this handler to the Node.js runtime.
+export const runtime = "nodejs";
+
+/**
+ * The ONE error the client ever sees for a failed authentication, whatever the
+ * actual cause: malformed body, bad email format, password too short, no such
+ * account, or wrong password. Anything more specific is an oracle.
+ */
+const GENERIC_ERROR = { error: "Invalid email or password" } as const;
+
+type AuthRow = {
+  id: number;
+  email: string;
+  role: "student" | "admin";
+  display_name: string;
+  password_hash: string;
+};
+
 export async function POST(req: NextRequest) {
-  const body = await req.json().catch(() => ({}));
-  const email = String(body.email ?? "");
-  const password = String(body.password ?? "");
+  const ip = clientIp(req);
+  const rateKey = `login:${ip}`;
 
-  // [VULN: No rate limiting — Task 2]
-  // A real login would track attempts per account/IP and back off or lock out.
-  // Nothing here does — an attacker can brute-force or spray freely.
+  // ---- 1. Rate limit, before any DB or Argon2 work -------------------------
+  const limit = checkRateLimit(rateKey);
+  if (!limit.allowed) {
+    console.warn(`[login] rate limited ip=${ip} retry_after=${limit.retryAfterSec}s`);
+    return NextResponse.json(
+      { error: "Too many login attempts. Please try again later." },
+      { status: 429, headers: { "Retry-After": String(limit.retryAfterSec) } }
+    );
+  }
 
-  // --------------------------------------------------------------------------
-  // [VULN: SQL injection — Task 2]  and  [VULN: Plaintext passwords — Task 2]
-  //
-  // The email and password are concatenated straight into the SQL string and
-  // executed with sql.unsafe(). postgres.js would parameterize safely if we
-  // used a tagged template (sql`... ${email} ...`); we deliberately do not.
-  //
-  // Classic bypass:  email = ' OR '1'='1' --      password = anything
-  //   => WHERE p.email = '' OR '1'='1' -- ' AND c.password = '...'
-  //      comments out the password check and returns the first row.
-  //
-  // The password is matched in plaintext (c.password = '<password>'), because
-  // credentials.password stores the raw password (see db/migrations/001_init.sql).
-  // --------------------------------------------------------------------------
-  const authQuery =
-    "SELECT p.id, p.email, p.role, p.display_name " +
-    "FROM profiles p " +
-    "JOIN credentials c ON c.profile_id = p.id " +
-    "WHERE p.email = '" + email + "' AND c.password = '" + password + "'";
+  // ---- 2. Validate ---------------------------------------------------------
+  const body = await req.json().catch(() => null);
+  const input = validateCredentials(body);
+  if (!input.ok) {
+    // `reason` is a server-side log label and never reaches the client.
+    console.warn(`[login] rejected ip=${ip} reason=${input.reason}`);
+    recordFailure(rateKey);
+    return NextResponse.json(GENERIC_ERROR, { status: 401 });
+  }
 
-  let rows: any[];
+  // ---- 3. Fetch the account BY EMAIL — parameterized -----------------------
+  // postgres.js sends this as an extended-query with a $1 placeholder, so the
+  // interpolated value is bound as DATA. An injection string such as
+  //   ' OR '1'='1' --
+  // is compared as a literal email address, matches nothing, and cannot change
+  // the structure of the statement.
+  let rows: AuthRow[];
   try {
-    rows = await sql.unsafe(authQuery);
-  } catch (err: any) {
-    // [VULN: Verbose DB/stack errors — Task 2]
-    // The raw driver message, stack trace and the exact SQL we ran are handed
-    // straight back to the client whenever DEBUG is on (it is, by default).
-    return NextResponse.json(
-      DEBUG
-        ? { error: err?.message, stack: err?.stack, query: authQuery }
-        : { error: "Login failed" },
-      { status: 500 }
-    );
+    rows = await sql<AuthRow[]>`
+      SELECT p.id, p.email, p.role, p.display_name, c.password_hash
+      FROM profiles p
+      JOIN credentials c ON c.profile_id = p.id
+      WHERE p.email = ${input.email}
+      LIMIT 1
+    `;
+  } catch (err) {
+    // Full detail to the server log; nothing but a fixed string to the client.
+    console.error("[login] database error", err);
+    return NextResponse.json({ error: "Login failed" }, { status: 500 });
   }
 
-  if (rows.length > 0) {
-    const user = rows[0];
+  const account = rows[0] ?? null;
 
-    // [VULN: No session-id regeneration — Task 2]
-    // We pass the sid the browser already presented straight through, so an
-    // attacker-fixed session id survives login (session fixation).
-    const presented = getPresentedSid(req);
-    const sid = await establishSession(user.id, presented);
+  // ---- 4. Verify ----------------------------------------------------------
+  // verifyPassword always performs exactly one Argon2id verification, even when
+  // `account` is null, so an unknown email costs the same time as a known email
+  // with the wrong password.
+  const ok = await verifyPassword(account?.password_hash ?? null, input.password);
 
-    const res = NextResponse.json({
-      ok: true,
-      user: { id: user.id, email: user.email, role: user.role },
-    });
-    // Hand-built Set-Cookie with NO SameSite (see lib/session.ts).
-    res.headers.append("Set-Cookie", buildSessionCookie(sid));
-    return res;
+  if (!account || !ok) {
+    console.warn(`[login] failed ip=${ip} email=${input.email} account_exists=${Boolean(account)}`);
+    recordFailure(rateKey);
+    // Identical response for "no such account" and "wrong password".
+    return NextResponse.json(GENERIC_ERROR, { status: 401 });
   }
 
-  // --------------------------------------------------------------------------
-  // [VULN: User enumeration / field disclosure — Task 2]
-  // On failure we run a second (also injectable) email-only lookup so we can
-  // tell the caller PRECISELY which field was wrong — leaking which email
-  // addresses exist and turning password guessing into a two-step oracle.
-  // --------------------------------------------------------------------------
-  const emailLookup = "SELECT id FROM profiles WHERE email = '" + email + "'";
-  let byEmail: any[];
-  try {
-    byEmail = await sql.unsafe(emailLookup);
-  } catch (err: any) {
-    return NextResponse.json(
-      DEBUG
-        ? { error: err?.message, stack: err?.stack, query: emailLookup }
-        : { error: "Login failed" },
-      { status: 500 }
-    );
-  }
+  // ---- 5. Success: rotate the session, clear the throttle ------------------
+  resetRateLimit(rateKey);
+  const sid = await establishSession(account.id, getPresentedSid(req));
+  console.info(`[login] success ip=${ip} profile_id=${account.id}`);
 
-  if (byEmail.length === 0) {
-    return NextResponse.json(
-      { error: "No account exists with that email address." },
-      { status: 401 }
-    );
-  }
-  return NextResponse.json(
-    { error: "Incorrect password for that account." },
-    { status: 401 }
-  );
+  const res = NextResponse.json({
+    ok: true,
+    user: { id: account.id, email: account.email, role: account.role },
+  });
+  // Cookie attributes are unchanged from the baseline on purpose — the missing
+  // SameSite/Secure is a Task 3 finding (see src/lib/session.ts).
+  res.headers.append("Set-Cookie", buildSessionCookie(sid));
+  return res;
 }

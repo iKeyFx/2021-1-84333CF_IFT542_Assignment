@@ -1,0 +1,246 @@
+================================================================================
+ IFT542 — Task 2 evidence: AFTER (hardened build)
+================================================================================
+ Baseline for comparison: evidence/task2/run-output.txt  (tag v0-vulnerable)
+ This capture:             branch harden/task2
+ Stack: npm run db:reset && npm run dev  (app on http://127.0.0.1:3000)
+
+ All six planted Task 2 defects are remediated. Task 3 defects are untouched.
+================================================================================
+
+
+--------------------------------------------------------------------------------
+ 1. SQL INJECTION — auth bypass is closed
+--------------------------------------------------------------------------------
+$ node tests/sqli-login.mjs
+
+Attempting login WITHOUT valid credentials, using SQLi payload:
+  email    = "' OR '1'='1' -- "
+  password = "irrelevant"
+
+HTTP status: 401
+Response body: {"error":"Invalid email or password"}
+Set-Cookie: []
+
+[NO BYPASS] The injection did not authenticate (is the DB seeded?).
+(exit code 1)
+
+NOTE: this script is the UNCHANGED v0 proof-of-concept. In the vulnerable build
+it exited 0 with a session cookie. Exit code 1 and "[NO BYPASS]" are now the
+PASS condition — the script's own narration ("is the DB seeded?") is v0 text and
+no longer describes reality. The database is seeded; the injection simply fails.
+
+The payload is bound as DATA, not code:
+    WHERE p.email = $1        with $1 = "' OR '1'='1' -- "
+It is compared as a literal email address, matches zero rows, and cannot change
+the structure of the statement. Proven directly in
+tests/sqli-parameterized.test.ts ("binds the payload as a literal string,
+matching zero rows"), which runs the same WHERE clause through the driver and
+asserts 0 rows returned where the v0 concatenated form matched all 7.
+
+
+--------------------------------------------------------------------------------
+ 2. PLAINTEXT PASSWORDS — now Argon2id
+--------------------------------------------------------------------------------
+$ docker compose exec postgres psql -U ift542 -d ift542 \
+    -c "SELECT p.email, left(c.password_hash,46) FROM credentials c
+        JOIN profiles p ON p.id=c.profile_id ORDER BY p.id;"
+
+           email           |              password_hash_prefix
+---------------------------+------------------------------------------------
+ ada.learner@campus.local  | $argon2id$v=19$m=19456,p=1,t=2$y6knrmufm5FsGLe
+ grace.coder@campus.local  | $argon2id$v=19$m=19456,p=1,t=2$x04kdA7Ilq2UKpA
+ linus.pupil@campus.local  | $argon2id$v=19$m=19456,p=1,t=2$I2M4ARCxC5zX9gb
+ mira.scholar@campus.local | $argon2id$v=19$m=19456,p=1,t=2$etfTdnmJ/0Jf8u6
+ otto.student@campus.local | $argon2id$v=19$m=19456,p=1,t=2$db9Jr8yh6PHaZIZ
+ nova.trainee@campus.local | $argon2id$v=19$m=19456,p=1,t=2$PV3weeXpBAxWD72
+ admin@campus.local        | $argon2id$v=19$m=19456,p=1,t=2$biseoVzOdqKScza
+(7 rows)
+
+Every salt differs, so identical passwords would still produce different
+digests. Work factor m=19456 KiB (19 MiB), t=2, p=1 — the OWASP Password
+Storage Cheat Sheet minimum for Argon2id. (The library serialises parameters
+alphabetically, hence "m,p,t" rather than the usual "m,t,p".)
+
+$ ... -c "\d credentials"
+
+                Table "public.credentials"
+    Column     |  Type   | Nullable
+---------------+---------+----------
+ profile_id    | integer | not null
+ password_hash | text    | not null
+Check constraints:
+    "credentials_password_hash_argon2id" CHECK (password_hash ~~ '$argon2id$%')
+
+The plaintext `password` column is GONE, and the CHECK constraint makes "no
+plaintext" a database invariant rather than a convention — an attempt to store
+a plaintext value fails with SQLSTATE 23514 (asserted in
+tests/password-storage.test.ts).
+
+
+--------------------------------------------------------------------------------
+ 2b. THE MIGRATION ITSELF — re-hashing seed passwords
+--------------------------------------------------------------------------------
+`npm run db:reset:legacy` stages the exact v0 plaintext credentials, then runs
+the Argon2id migration over them, showing the before/after in one command.
+
+$ npm run db:reset:legacy
+
+  → applying migration 001_init.sql ... done
+  → applying migration 002_argon2id_password_hash.sql ... done
+  → seeding fictitious data ... done
+  → staging v0 PLAINTEXT credentials (demo only) ... done (7)
+    before:
+      ada.learner@campus.local     ada-pw-2025
+      grace.coder@campus.local     grace-pw-2025
+      linus.pupil@campus.local     linus-pw-2025
+  → hashing credentials with Argon2id ... done (re-hashed 7, seeded 0)
+    after:
+      ada.learner@campus.local     $argon2id$v=19$m=19456,p=1,t=2$y6knrmufm…
+      grace.coder@campus.local     $argon2id$v=19$m=19456,p=1,t=2$x04kdA7Il…
+      linus.pupil@campus.local     $argon2id$v=19$m=19456,p=1,t=2$I2M4ARCxC…
+
+Seeded: 6 students, 5 courses, 8 enrolments, 1 admin.
+Credentials: 7 rows, all Argon2id, no plaintext column.
+Migration + seed complete.
+
+The DEFAULT path, `npm run db:reset`, never writes plaintext at any instant:
+
+  → hashing credentials with Argon2id ... done (re-hashed 0, seeded 7)
+  Credentials: 7 rows, all Argon2id, no plaintext column.
+
+Both paths converge on the same schema. See db/hash-passwords.mjs.
+
+
+--------------------------------------------------------------------------------
+ 3 & 4. VERBOSE ERRORS + USER ENUMERATION — both closed
+--------------------------------------------------------------------------------
+$ node tests/enum-and-verbose.mjs
+
+1) Unknown email vs known email — the messages differ (enumeration):
+
+  unknown email  -> 401 {"error":"Invalid email or password"}
+  known email    -> 401 {"error":"Invalid email or password"}
+
+  => Distinct 'No account…' vs 'Incorrect password…' replies confirm the app leaks which accounts exist.
+
+2) Malformed injection to force a DB error (verbose stack/query leak):
+
+  status: 401
+  body keys: [ 'error' ]
+
+NOTE: again this is the UNCHANGED v0 script, so its narration still ASSERTS a
+leak. Read the data, not the prose: the two replies are now byte-identical, so
+there is nothing to distinguish a real account from a non-existent one. In v0
+they read "No account exists with that email address." vs "Incorrect password
+for that account."
+
+Section 2 previously returned body keys [ 'error', 'stack', 'query' ] with a
+500 and the full concatenated SQL. It now returns [ 'error' ] only. The forced-
+error payload "' AND 1=CAST('x' AS int) -- " is rejected by input validation
+before it reaches the database at all — defence in depth on top of
+parameterization.
+
+Timing was equalised too: an unknown email still costs one full Argon2id
+verification (against a decoy digest), so response time does not distinguish
+the two cases either. See src/lib/password.ts.
+
+
+--------------------------------------------------------------------------------
+ 5. RATE LIMITING — per IP, 5 failures / 60s
+--------------------------------------------------------------------------------
+8 consecutive failed logins from one source address:
+
+  attempt 1 -> 401  {"error":"Invalid email or password"}
+  attempt 2 -> 401  {"error":"Invalid email or password"}
+  attempt 3 -> 401  {"error":"Invalid email or password"}
+  attempt 4 -> 401  {"error":"Invalid email or password"}
+  attempt 5 -> 401  {"error":"Invalid email or password"}
+  attempt 6 -> 429 (Retry-After: 60)  {"error":"Too many login attempts. Please try again later."}
+  attempt 7 -> 429 (Retry-After: 60)  {"error":"Too many login attempts. Please try again later."}
+  attempt 8 -> 429 (Retry-After: 60)  {"error":"Too many login attempts. Please try again later."}
+
+Only FAILURES are counted and a successful login clears the bucket, so a user
+who mistypes twice and then succeeds is never throttled. The check runs before
+any database or hashing work, so a throttled request costs nothing — and even a
+CORRECT password is refused once the window is exhausted (asserted in
+tests/rate-limit.test.ts).
+
+The 429 body differs from the generic 401 message deliberately. The bucket is
+keyed by IP, never by account, so it reveals nothing about whether an email
+exists; and the 429 status is distinguishable regardless of body text, so
+obscuring the text would only hurt a legitimate user.
+
+
+--------------------------------------------------------------------------------
+ 6. SESSION-ID REGENERATION — fixation closed
+--------------------------------------------------------------------------------
+A session id is planted in the sessions table and presented as a cookie, as an
+attacker would before handing the victim a link. The victim then logs in
+normally with correct credentials:
+
+  planted  Cookie: sid=1373892c-351d-4d29-80c0-84953262cd14
+  status   200
+  response Set-Cookie: sid=3f01209e-ef61-45fd-8941-1f0c743f194f; Path=/; HttpOnly; Max-Age=86400
+  DB       SELECT 1 FROM sessions WHERE id=1373892c-351d...  ->  0 rows
+
+The planted id is destroyed, not re-pointed. In v0 the same id survived login
+and was simply bound to the newly authenticated user. Asserted in
+tests/session-regeneration.test.ts, which also proves two successive logins
+yield different ids and that other users' sessions are left alone.
+
+The cookie ATTRIBUTES are unchanged on purpose (no SameSite, no Secure) — that
+is a Task 3 finding and evidence/task3/csrf-poc.html still depends on it.
+
+
+--------------------------------------------------------------------------------
+ 7. AUTOMATED TEST SUITE
+--------------------------------------------------------------------------------
+$ npm test
+
+ RUN  v4.1.10
+
+ ✓ tests/session-regeneration.test.ts  (5 tests)
+ ✓ tests/auth-login.test.ts            (16 tests)
+ ✓ tests/sqli-parameterized.test.ts    (11 tests)
+ ✓ tests/password-storage.test.ts      (13 tests)
+ ✓ tests/rate-limit.test.ts            (7 tests)
+
+ Test Files  5 passed (5)
+      Tests  54 passed (54)
+
+Run three times back to back to confirm the suite is not order- or timing-
+dependent: 54/54 on each run.
+
+
+--------------------------------------------------------------------------------
+ 8. TASK 3 REGRESSION CHECK — still reproducible
+--------------------------------------------------------------------------------
+The hardening is scoped to Task 2. Confirmed still vulnerable after the change:
+
+  - Default admin — admin@campus.local / admin123 still logs in (200, role
+    "admin"). Asserted in tests/auth-login.test.ts so a future tightening of
+    PASSWORD_MIN cannot silently remove the finding.
+
+  - No SameSite / no Secure on the session cookie. Visible in the Set-Cookie
+    captured in section 6 above:
+        sid=…; Path=/; HttpOnly; Max-Age=86400
+    No SameSite attribute, no Secure. evidence/task3/csrf-poc.html still works.
+
+  - DEBUG still defaults to true in src/lib/config.ts, and is still consumed by
+    src/app/api/admin/url-preview/route.ts. Only the login route stopped
+    reading it.
+
+  - SSRF unchanged:
+
+    $ node tests/ssrf-demo.mjs
+    Logged in as admin; session cookie acquired.
+    Asking the SERVER to fetch: http://127.0.0.1:3000/login
+    HTTP status of preview call: 200
+    Server fetched status: 200 OK
+    [SSRF CONFIRMED] The server followed a loopback URL and returned its body —
+    no host/scheme/IP restrictions are applied.
+    (exit code 0)
+
+    This run also double-confirms the default admin login, since the script
+    authenticates as admin before exercising the preview endpoint.

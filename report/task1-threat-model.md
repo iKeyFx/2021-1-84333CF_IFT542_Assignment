@@ -68,6 +68,12 @@ flowchart TB
 
 ## 2. STRIDE Worksheet (Evidence item 7 — ≥6 threats, ≥1 per category)
 
+> **All `file:line` references in §2, §3, §4 and Appendix A describe the tagged `v0-vulnerable`
+> baseline** (commit `b42df0a`) and are left unchanged as the historical record of the threat model.
+> Task 2 has since remediated T1, T5, T7, T8 and the T9 fixation component; the line numbers in the
+> current working tree therefore differ. See **Appendix B** for the remediation status, the controls
+> implemented, and their new locations.
+
 | # | STRIDE | Application-specific threat | Planted vulnerability (file : line) |
 |---|--------|------------------------------|--------------------------------------|
 | T1 | **S**poofing | Authenticate as any user (incl. admin) with no valid password by injecting into the login query | SQLi — `src/app/api/login/route.ts:46–54` |
@@ -140,6 +146,52 @@ rank. File:line references match §2 exactly.
 **Note on T4:** the repudiation threat (no tamper-evident audit log) is an *absence of control*, not a
 planted code sink, so it has no `file:line` row above; it corresponds to OWASP **A09 Security Logging &
 Monitoring Failures**.
+
+---
+
+## Appendix B — Task 2 remediation status
+
+Task 2 hardened authentication and database access. The six Task 2 findings from Appendix A are
+closed; the seven Task 3 findings are untouched by design. Baseline for comparison is tag
+`v0-vulnerable`:
+
+```
+git diff v0-vulnerable -- src/app/api/login/route.ts
+```
+
+| Planted vulnerability (Appendix A) | STRIDE | Risk # | Status | Control implemented | New location | Evidence |
+|---|---|---|---|---|---|---|
+| SQL injection in login (concatenated `sql.unsafe`) | T1 | 1 | **Closed** | postgres.js tagged template — `WHERE p.email = ${input.email}` sent as an extended query with a `$1` placeholder, so input binds as data. `sql.unsafe` and the second injectable email-only lookup removed. | `api/login/route.ts:84–92` | `tests/sqli-parameterized.test.ts`; `evidence/task2/run-output-after.txt` §1 |
+| Plaintext password storage & compare | T5 | 3 | **Closed** | Argon2id, m=19456 KiB, t=2, p=1, 32-byte digest, per-row random salt (OWASP minimum). Login fetches by email then calls `argon2.verify()`. Plaintext column dropped; `CHECK (password_hash LIKE '$argon2id$%')` enforces the format in the database. | `lib/password.ts`, `db/hash-passwords.mjs`, `db/migrations/002_argon2id_password_hash.sql` | `tests/password-storage.test.ts`; `evidence/task2/run-output-after.txt` §2, §2b |
+| Verbose DB/stack errors to client | T7 | 9 | **Closed** | Driver message, stack and query logged server-side only; client gets a fixed string. The login page no longer renders `stack`/`query`. | `api/login/route.ts:93–97`, `app/login/page.tsx` | `tests/auth-login.test.ts`; `evidence/task2/run-output-after.txt` §3 |
+| User enumeration / field disclosure | T7 | 9 | **Closed** | One generic `401 {"error":"Invalid email or password"}` for every failure mode; unknown-email and wrong-password replies are byte-identical. Timing equalised via a decoy Argon2id verification. | `api/login/route.ts:44`, `107–112`; `lib/password.ts` | `tests/auth-login.test.ts` (`toEqual(wrongPwBody)`) |
+| No rate limiting on login | T8 | 6 | **Closed** (login half) | Per-IP fixed window: 5 failures / 60 s, then `429` + `Retry-After`, checked before any DB or hashing work. Failures only; success clears the bucket. | `lib/rate-limit.ts`, `api/login/route.ts:57–66` | `tests/rate-limit.test.ts`; `evidence/task2/run-output-after.txt` §5 |
+| No session-id regeneration (fixation) | T9 | 2 | **Closed** | Fresh `randomUUID()` on every successful login; the presented id is deleted, not re-pointed. | `lib/session.ts:43–63` | `tests/session-regeneration.test.ts`; `evidence/task2/run-output-after.txt` §6 |
+| Stored XSS (display name) | T3 | 4 | Open (Task 3) | — | unchanged | — |
+| No CSRF on state-changing POSTs | T2 | 5 | Open (Task 3) | — | unchanged | — |
+| No SameSite on session cookie | T2 | 5 | Open (Task 3) | — | unchanged | — |
+| SSRF in admin URL preview | T6 | 8 | Open (Task 3) | — | unchanged | `node tests/ssrf-demo.mjs` still confirms |
+| Debug mode on | T7 | 9 | Open (Task 3) | Login route no longer reads `DEBUG`, but the flag still defaults to `true` and still drives the URL-preview handler. | unchanged | — |
+| Hardcoded session secret | T9 | 2 | Open (Task 3) | — | unchanged | — |
+| Default admin with well-known password | T9 | 2 | Open (Task 3) | — | unchanged | asserted still working in `tests/auth-login.test.ts` |
+
+**Supporting control added:** input validation (`lib/validate.ts`) — email format plus 3–254 length
+bounds, password 8–128 length bounds, and rejection of non-string values rather than `String()`
+coercion. `PASSWORD_MIN` is capped at 8 precisely so the Task 3 default admin (`admin123`, exactly
+8 characters) keeps working; a test asserts this so the finding cannot be removed by accident.
+
+**Residual risk after Task 2.** The §3 residual scores anticipated these fixes and still stand
+(T1 → 5, T5 → 6, T7 → 2, T8 → 6). Qualifications worth recording:
+
+- T8's residual assumed rate limiting *and* an upload size cap. Only the login half is delivered;
+  the upload handler still has no size cap, so T8's residual is not yet fully realised.
+- The limiter is a **fixed** window, so ~2× the limit can be burst across a boundary; its state is
+  in-process and lost on restart; and it trusts `X-Forwarded-For`, which is safe only because this
+  artefact is localhost-only.
+- Timing is *equalised*, not constant — the decoy hash removes the ~30 ms Argon2 step function, but
+  a sub-millisecond database round-trip difference remains.
+- T9's residual of 5 depends on **all three** of its components. Only session fixation is closed;
+  the default admin and the hardcoded secret remain, so T9 is still live at its original score.
 
 ---
 

@@ -5,6 +5,9 @@
 /.next
 /out
 
+# TypeScript incremental build cache
+tsconfig.tsbuildinfo
+
 # Local env (never commit real secrets)
 .env
 .env.local

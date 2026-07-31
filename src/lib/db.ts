@@ -2,10 +2,13 @@
 //  postgres.js connection singleton.
 //
 //  postgres.js is parameterized/safe BY DEFAULT when you use tagged-template
-//  calls, e.g.  sql`SELECT * FROM profiles WHERE email = ${email}`.
-//  The login route deliberately AVOIDS that and uses sql.unsafe(...) with a
-//  string-concatenated query instead — that is the planted SQL-injection sink.
-//  See src/app/api/login/route.ts. [VULN: SQL injection — Task 2]
+//  calls, e.g.  sql`SELECT * FROM profiles WHERE email = ${email}`, which are
+//  sent as extended queries with $1-style placeholders.
+//
+//  [FIXED — Task 2: SQL injection]
+//  The login route used to bypass that with a string-concatenated sql.unsafe()
+//  call. It now uses a tagged template, so the email is bound as data.
+//  See src/app/api/login/route.ts.
 // ============================================================================
 import postgres from "postgres";
 import { DATABASE_URL } from "./config";

@@ -2,8 +2,9 @@
 --  IFT542 — Student Registration  |  Seed data
 --  ALL DATA IS FICTITIOUS. Invented names, @campus.local addresses, no PII.
 --
---  Passwords are seeded in PLAINTEXT because the schema stores them that way
---  on purpose. [VULN: Plaintext passwords — Task 2]
+--  [FIXED — Task 2] Passwords are no longer seeded here at all; they are
+--  hashed with Argon2id by db/hash-passwords.mjs. See the Credentials section
+--  below.
 --
 --  [VULN: Default admin with well-known password — Task 3]
 --    admin@campus.local / admin123
@@ -22,18 +23,14 @@ INSERT INTO profiles (email, role, display_name, bio) VALUES
   ('nova.trainee@campus.local',  'student', 'Nova Trainee',   'Into security and CTFs.'),
   ('admin@campus.local',         'admin',   'Campus Admin',   'Registration office administrator.');
 
--- ---- Credentials (PLAINTEXT, fictitious) ----------------------------------
-INSERT INTO credentials (profile_id, password)
-SELECT id, CASE email
-  WHEN 'ada.learner@campus.local'  THEN 'ada-pw-2025'
-  WHEN 'grace.coder@campus.local'  THEN 'grace-pw-2025'
-  WHEN 'linus.pupil@campus.local'  THEN 'linus-pw-2025'
-  WHEN 'mira.scholar@campus.local' THEN 'mira-pw-2025'
-  WHEN 'otto.student@campus.local' THEN 'otto-pw-2025'
-  WHEN 'nova.trainee@campus.local' THEN 'nova-pw-2025'
-  WHEN 'admin@campus.local'        THEN 'admin123'   -- well-known default (Task 3 vuln)
-END
-FROM profiles;
+-- ---- Credentials ----------------------------------------------------------
+-- [FIXED — Task 2] Passwords are NO LONGER seeded here.
+--
+-- SQL cannot compute an Argon2id digest, and inserting plaintext — even
+-- transiently — would defeat the fix. The credentials are hashed and inserted
+-- by db/hash-passwords.mjs, which db/migrate.mjs runs immediately after this
+-- file. The demo passwords themselves are unchanged and are documented in
+-- README.md and in db/hash-passwords.mjs (DEMO_PASSWORDS).
 
 -- ---- Courses (5) ----------------------------------------------------------
 INSERT INTO courses (code, title, description, capacity) VALUES

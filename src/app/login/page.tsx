@@ -8,13 +8,11 @@ export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [details, setDetails] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
-    setDetails(null);
     setLoading(true);
     try {
       const res = await fetch("/api/login", {
@@ -28,13 +26,11 @@ export default function LoginPage() {
         router.refresh();
         return;
       }
-      // The API returns field-specific messages (user enumeration) and, when a
-      // DB error occurs with DEBUG on, a stack trace + the raw SQL query. We
-      // display whatever comes back verbatim so the leak is visible in the UI.
-      setError(data.error ?? "Login failed");
-      if (data.stack || data.query) {
-        setDetails(JSON.stringify({ query: data.query, stack: data.stack }, null, 2));
-      }
+      // [FIXED — Task 2: verbose errors]
+      // The API now returns a single generic message and never sends `stack`
+      // or `query`. This used to render whatever came back verbatim, which
+      // amplified the server-side leak straight into the UI.
+      setError(data.error ?? "Invalid email or password");
     } catch (err: any) {
       setError(err?.message ?? "Network error");
     } finally {
@@ -80,9 +76,6 @@ export default function LoginPage() {
       {error && (
         <div className="mt-4 rounded border border-red-300 bg-red-50 p-3 text-sm text-red-800">
           <p className="font-medium">{error}</p>
-          {details && (
-            <pre className="mt-2 overflow-x-auto text-xs whitespace-pre-wrap">{details}</pre>
-          )}
         </div>
       )}
 
