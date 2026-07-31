@@ -26,6 +26,11 @@ git diff v0-vulnerable v1-hardened-task2 -- src/app/api/login/route.ts
 
 # Screenshots to capture
 
+> **For submission you need two: 07 and 13** (optionally 08). See
+> [`SUBMISSION.md`](SUBMISSION.md) for the mapping to evidence items 16–19. The rest of this table
+> exists for reproducibility and marker spot-checks — capture them if you want the fuller record,
+> but they are not required.
+
 Naming follows the `evidence/task1/` convention (`NN-name.png`). Task 1 used `01`–`06`, so the
 Task 2 captures continue from `07`. Every command below is also captured as text in
 `run-output-after.txt`, so the screenshots are corroboration, not the only record.
@@ -39,13 +44,13 @@ npm run dev           # app on http://127.0.0.1:3000, in its own terminal
 
 | # | File | Command / action | What must be visible in the frame |
 |---|------|------------------|-----------------------------------|
-| 07 | `07-argon2id-hashes.png` | <code>docker compose exec postgres psql -U ift542 -d ift542 -c "SELECT p.email, left(c.password_hash,46) FROM credentials c JOIN profiles p ON p.id=c.profile_id ORDER BY p.id;" -c "\d credentials"</code> | All 7 rows prefixed `$argon2id$v=19$m=19456,p=1,t=2$` with **different** salts; and the `credentials` table showing only `profile_id` + `password_hash` (**no** `password` column) plus the `CHECK (password_hash ~~ '$argon2id$%')` constraint |
-| 08 | `08-sqli-no-bypass.png` | `node tests/sqli-login.mjs` | `HTTP status: 401`, body `{"error":"Invalid email or password"}`, `Set-Cookie: []`, and the final `[NO BYPASS]` line |
+| 07 **(required)** | `07-argon2id-hashes.png` | <code>docker compose exec postgres psql -U ift542 -d ift542 -c "SELECT p.email, left(c.password_hash,46) FROM credentials c JOIN profiles p ON p.id=c.profile_id ORDER BY p.id;" -c "\d credentials"</code> | All 7 rows prefixed `$argon2id$v=19$m=19456,p=1,t=2$` with **different** salts; and the `credentials` table showing only `profile_id` + `password_hash` (**no** `password` column) plus the `CHECK (password_hash ~~ '$argon2id$%')` constraint |
+| 08 *(recommended)* | `08-sqli-no-bypass.png` | `node tests/sqli-login.mjs` | `HTTP status: 401`, body `{"error":"Invalid email or password"}`, `Set-Cookie: []`, and the final `[NO BYPASS]` line |
 | 09 | `09-generic-error-ui.png` | In the browser at `/login`, submit a **wrong password** for `ada.learner@campus.local`; then submit a **non-existent** email. Two shots, or one split frame. | The identical red banner `Invalid email or password` in both cases — and **no** `<pre>` stack-trace block, which v0 rendered |
 | 10 | `10-enum-and-verbose.png` | `node tests/enum-and-verbose.mjs` | Section 1: the unknown-email and known-email lines carrying the **same** message. Section 2: `body keys: [ 'error' ]` — no `stack`, no `query` |
 | 11 | `11-rate-limit.png` | `node evidence/task2/capture-rate-limit.mjs` | Attempts 1–5 → `401`, attempt 6+ → `429` with `Retry-After`, and the "correct password while throttled → 429" line |
 | 12 | `12-session-regeneration.png` | `node evidence/task2/capture-session-regen.mjs` | Planted sid ≠ issued sid, and `planted sid in DB: 0 rows` |
-| 13 | `13-tests-green.png` | `npm test` | `Test Files 5 passed (5)` and `Tests 54 passed (54)` |
+| 13 **(required)** | `13-tests-green.png` | `npm test` | `Test Files 5 passed (5)` and `Tests 54 passed (54)` |
 | 14 | `14-migration-rehash.png` | `npm run db:reset:legacy` | The `before:` pane (plaintext), then `re-hashed 7`, then the `after:` pane (`$argon2id$…`), then `Credentials: 7 rows, all Argon2id, no plaintext column.` |
 
 **Redaction note for 14.** That capture necessarily shows the fictitious plaintext demo passwords
