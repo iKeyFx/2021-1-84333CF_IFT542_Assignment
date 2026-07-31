@@ -1,0 +1,315 @@
+================================================================================
+ IFT542 — Task 3 evidence: AFTER (hardened build)
+================================================================================
+ Baseline for comparison: evidence/task3/run-output.txt  (tag v1-hardened-task2)
+ This capture:             branch harden/task3
+ Stack: npm run db:reset, then either
+          npm run dev                       (development policy)
+          npm run build && npm start        (PRODUCTION policy — used for §4)
+
+ All five Task 3 deliverables are implemented. Task 1 and Task 2 controls are
+ untouched and still verified by their own tests.
+================================================================================
+
+
+--------------------------------------------------------------------------------
+ 1. STORED XSS — payload stored verbatim, rendered INERT
+--------------------------------------------------------------------------------
+Saved  <img src=x onerror="alert(1)">  as the profile display name, then loaded
+/dashboard:
+
+  served HTML contains RAW <img src=x onerror : false
+  served HTML contains ESCAPED &lt;img         : true
+
+And the database still holds the payload untouched:
+
+  SELECT display_name FROM profiles WHERE email='ada.learner@campus.local';
+  -> "<img src=x onerror=\"alert(1)\">"
+
+BEFORE (run-output.txt): "Dashboard contains RAW payload unescaped: true".
+
+Both halves matter. If the app had merely stripped the input, the second
+assertion would look identical while proving something weaker. Storing it intact
+and escaping on output is what "contextual output encoding" means: the same
+value is safe in a text node and dangerous in raw HTML, so safety is a property
+of HOW IT IS RENDERED, not of the value.
+
+Fix: src/app/dashboard/page.tsx and src/app/profile/page.tsx now render
+{user.display_name} instead of dangerouslySetInnerHTML={{ __html: ... }}.
+Automated: tests/xss-encoding.test.ts (5 payloads x 2 pages).
+
+
+--------------------------------------------------------------------------------
+ 2. CSRF — forged cross-site POST is REJECTED
+--------------------------------------------------------------------------------
+Same request as evidence/task3/csrf-poc.html: a cross-origin form POST to
+/api/profile carrying the victim's session cookie, Origin: null (as a file://
+page sends), and no CSRF token.
+
+  valid token, no Origin              -> 303  ACCEPTED
+  valid token, same Origin            -> 303  ACCEPTED
+  NO token                            -> 403  rejected
+  tampered signature                  -> 403  rejected
+  Origin: null (the file:// PoC)      -> 403  rejected
+  foreign Origin                      -> 403  rejected
+
+BEFORE: "status: 303 ... dashboard now contains the forged name: true".
+
+The PoC now fails on THREE independent grounds — no token, Origin: null, and
+SameSite=Lax on the session cookie. Each was verified in isolation so the
+layering is visible rather than asserted.
+
+A valid token issued for a DIFFERENT session is also refused (403): the token is
+an HMAC over the session id, so it is useless outside the session it was minted
+for. That is what stops an attacker replaying their own legitimately-issued
+token against a victim.
+
+Session cookie, after:
+
+  sid=<uuid>; Path=/; HttpOnly; SameSite=Lax; Max-Age=86400; Secure
+
+BEFORE: sid=<uuid>; Path=/; HttpOnly; Max-Age=86400     (no SameSite, no Secure)
+
+Note on Secure over http://127.0.0.1: browsers treat loopback as a potentially
+trustworthy origin, so the cookie is still accepted. The captures above use a
+Node client, which does not enforce Secure — confirm in browser devtools
+(Application -> Cookies) that the cookie is stored, and screenshot it.
+
+Automated: tests/csrf.test.ts. Every rejection is paired with a database read
+proving the state did not change — a 403 returned AFTER applying the write would
+otherwise pass.
+
+
+--------------------------------------------------------------------------------
+ 3. SSRF — internal destinations refused
+--------------------------------------------------------------------------------
+$ node tests/ssrf-demo.mjs
+
+Logged in as admin; session cookie acquired.
+
+Asking the SERVER to fetch: http://127.0.0.1:3000/login
+HTTP status of preview call: 403
+Returned body snippet (first 200 chars):
+  URL not allowed
+
+[SSRF BLOCKED] The server refused to fetch the loopback URL. src/lib/url-guard.ts
+rejected it before any request left the process; the specific reason is in the
+server log only, since the reason itself would be an internal-network oracle.
+(exit code 1)
+
+BEFORE: "[SSRF CONFIRMED] The server followed a loopback URL and returned its
+body — no host/scheme/IP restrictions are applied."
+
+Full matrix through the live endpoint:
+
+  loopback (the v0 PoC target)      -> 403  {"ok":false,"error":"URL not allowed"}
+  localhost by name                 -> 403  {"ok":false,"error":"URL not allowed"}
+  cloud metadata (169.254.169.254)  -> 403  {"ok":false,"error":"URL not allowed"}
+  private 10/8                      -> 403  {"ok":false,"error":"URL not allowed"}
+  private 192.168/16                -> 403  {"ok":false,"error":"URL not allowed"}
+  private 172.16/12                 -> 403  {"ok":false,"error":"URL not allowed"}
+  file:// scheme                    -> 403  {"ok":false,"error":"URL not allowed"}
+  non-allowlisted host              -> 403  {"ok":false,"error":"URL not allowed"}
+  IPv6 loopback [::1]               -> 403  {"ok":false,"error":"URL not allowed"}
+
+Every body is IDENTICAL by design. "connection refused" vs "host not allowed"
+would let an admin map the internal network one port at a time, so the distinct
+reason is logged server-side only (see §5).
+
+The guard also re-validates every redirect hop (redirect: "manual" plus a manual
+loop), which is the DNS-rebinding / redirect-pinning requirement, and caps the
+request at 5s and 64 KB.
+
+RESIDUAL, stated plainly: a TOCTOU gap remains between our DNS lookup and
+undici's own connect — a name can re-resolve between the two. Closing it needs a
+custom undici Agent whose connect hook pins the already-validated address. Not
+implemented; disclosed.
+
+Automated: tests/ssrf-guard.test.ts — the full range matrix runs OFFLINE against
+an injected resolver, including IPv4-mapped IPv6 (::ffff:127.0.0.1) and the
+172.16/12 boundary, where an off-by-one is the classic bug.
+
+
+--------------------------------------------------------------------------------
+ 4. SECURITY MISCONFIGURATION
+--------------------------------------------------------------------------------
+
+4a. Security headers — PRODUCTION build (npm run build && npm start)
+
+  content-security-policy: default-src 'self'; script-src 'self'
+    'nonce-mcpYSm1k8M8ijFf2Q7iWiw=='; style-src 'self'; img-src 'self' data:;
+    font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'self';
+    form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests
+  strict-transport-security: max-age=63072000; includeSubDomains
+  x-content-type-options: nosniff
+  x-frame-options: DENY
+  referrer-policy: no-referrer
+  permissions-policy: camera=(), microphone=(), geolocation=(), interest-cohort=()
+
+BEFORE: every one of these was ABSENT.
+
+The production script-src has NO unsafe-inline and NO unsafe-eval. Verification
+that the nonce actually works:
+
+  CSP nonce            : aSq3XD5rNtVBvp5TwgOqSA==
+  script tags w/ nonce : 15
+  matches the header   : true
+  script-src has unsafe-*: false
+
+That check matters: Next streams its RSC payload through inline <script> tags,
+so a strict CSP without a working nonce would render the app blank. The dev
+policy additionally allows 'unsafe-eval' and inline styles because webpack HMR
+requires them — that relaxation is gated on NODE_ENV and does not ship.
+
+HSTS honesty: browsers ignore Strict-Transport-Security over plain HTTP, so on
+http://127.0.0.1 it is inert. It is emitted in production for completeness of
+the header set and would only take effect behind TLS. It is not claimed as an
+active control here.
+
+frame-ancestors 'none' and X-Frame-Options: DENY are both present deliberately —
+the CSP directive is the modern control, the header is the legacy fallback.
+
+4b. Configuration fail-closed
+
+  DEBUG            was  (process.env.DEBUG ?? "true") !== "false"   -> fail-OPEN
+                   now  process.env.DEBUG === "true"                -> fail-CLOSED
+                   (DEBUG=0, DEBUG=off and production all left it ON before)
+
+  SESSION_SECRET   was  a constant committed to source, used in EVERY environment
+                   now  required in production (throws if absent); a labelled
+                        development-only value otherwise. It is also no longer
+                        dead code — it is the HMAC key for the CSRF tokens.
+
+  DEFAULT_ADMIN    deleted (was dead code that documented a weak credential)
+
+  productionBrowserSourceMaps  true -> false
+
+4c. Default admin credential rotated
+
+  admin@campus.local + rotated password  -> 200  {"ok":true,...,"role":"admin"}
+  admin@campus.local + "admin123"        -> 401  {"error":"Invalid email or password"}
+
+The password now comes from ADMIN_PASSWORD, falling back to a strong documented
+dummy. Asserted in tests/auth-login.test.ts so the retired credential cannot
+quietly come back.
+
+4d. Dependency status (npm audit)
+
+  BEFORE: 2 vulnerabilities — 1 CRITICAL (next), 1 high (postcss)
+  AFTER:  1 vulnerability   — 1 high (next)
+
+  Actions: next 14.2.5 -> 14.2.35 (clears the critical; patch-level, same 14.2
+  line). postcss -> 8.5.25. Next hard-pins postcss 8.4.31 internally, so an
+  `overrides` entry was needed to dedupe the nested copy away; `npm run build`
+  was re-verified afterwards.
+
+  RESIDUAL, stated honestly: one high-severity `next` advisory remains and has
+  no fix inside the 14.2 line — `npm audit fix --force` would install next@16,
+  a breaking major. Upgrading a framework major was judged out of scope for this
+  task; the finding is recorded rather than hidden. The remaining advisories
+  concern Server Actions, rewrites and middleware redirect handling, none of
+  which this app uses in the affected configuration.
+
+
+--------------------------------------------------------------------------------
+ 5. SECURITY LOGGING — structured, with who / what / when
+--------------------------------------------------------------------------------
+Threat T4 (repudiation) has been outstanding since Task 1, whose worksheet reads
+"no security logging in baseline (added only in Task 3)". This closes it.
+
+Format is JSON Lines — one object per event, machine-parseable with no parser:
+
+  npm start | grep '"event":"authz.denied"'
+
+REDACTED SAMPLES, captured live from the production server:
+
+--- failed-login ---
+{"ts":"2026-07-31T19:21:07.919Z","level":"warn","event":"auth.login.failed",
+ "actor":{"type":"anonymous"},"outcome":"denied","ip":"203.0.113.77",
+ "method":"POST","path":"/api/login","email":"a***@campus.local",
+ "reason":"bad-password"}
+
+--- denied-authorization ---
+{"ts":"2026-07-31T19:21:08.132Z","level":"warn","event":"authz.denied",
+ "actor":{"type":"user","profile_id":1,"role":"student"},"outcome":"denied",
+ "ip":"127.0.0.1","method":"POST","path":"/api/admin/courses",
+ "reason":"not-admin","required_role":"admin"}
+
+--- rejected-validation ---
+{"ts":"2026-07-31T19:21:07.939Z","level":"warn","event":"validation.rejected",
+ "actor":{"type":"anonymous"},"outcome":"denied","ip":"203.0.113.78",
+ "method":"POST","path":"/api/login","reason":"email-format"}
+
+Two further event types the same logger emits:
+
+--- csrf.rejected ---
+{"ts":"2026-07-31T19:21:08.251Z","level":"warn","event":"csrf.rejected",
+ "actor":{"type":"user","profile_id":1,"role":"student"},"outcome":"denied",
+ "ip":"127.0.0.1","method":"POST","path":"/api/profile",
+ "reason":"missing-token"}
+
+--- ssrf.blocked ---
+{"ts":"2026-07-31T19:21:08.367Z","level":"warn","event":"ssrf.blocked",
+ "actor":{"type":"user","profile_id":7,"role":"admin"},"outcome":"denied",
+ "ip":"127.0.0.1","method":"POST","path":"/api/admin/url-preview",
+ "reason":"blocked-link-local",
+ "target_url":"http://169.254.169.254/latest/meta-data/"}
+
+WHO  -> actor (profile_id + role, or type:"anonymous") and ip
+WHAT -> event + method + path + outcome + reason
+WHEN -> ts, ISO-8601 UTC
+
+The authz.denied sample is the interesting one. currentAdmin() used to return
+null for BOTH "nobody is logged in" and "a real user lacks the role", collapsing
+the single case worth alerting on. It now distinguishes them: reason="no-session"
+is usually just an expired tab, whereas reason="not-admin" with a profile_id is
+an authenticated user probing an admin endpoint.
+
+NO SECRETS, TOKENS OR UNNECESSARY PII. Redaction is enforced INSIDE the logger,
+not left to call sites:
+  - emails are masked (ada.learner@campus.local -> a***@campus.local). The
+    baseline logged the address verbatim at login/route.ts:108.
+  - a deny-list drops any field whose name contains password, hash, token, csrf,
+    sid, session, secret, cookie or auth — even if a caller passes it
+    explicitly. "Remember not to log the password" is not a control.
+tests/logging.test.ts asserts exactly that by passing a password, an Argon2id
+hash, a session id and a bearer token and checking none of them appear.
+
+
+--------------------------------------------------------------------------------
+ 6. AUTOMATED TEST SUITE
+--------------------------------------------------------------------------------
+$ npm run db:reset && npm test          (from cold, no dev server running)
+
+ ✓ tests/auth-login.test.ts            (19 tests)  Task 2
+ ✓ tests/sqli-parameterized.test.ts    (11 tests)  Task 2
+ ✓ tests/password-storage.test.ts      (13 tests)  Task 2
+ ✓ tests/rate-limit.test.ts             (7 tests)  Task 2
+ ✓ tests/session-regeneration.test.ts   (5 tests)  Task 2
+ ✓ tests/xss-encoding.test.ts           (9 tests)  Task 3
+ ✓ tests/csrf.test.ts                  (18 tests)  Task 3
+ ✓ tests/security-headers.test.ts      (13 tests)  Task 3
+ ✓ tests/ssrf-guard.test.ts            (50 tests)  Task 3
+ ✓ tests/logging.test.ts               (13 tests)  Task 3
+
+ Test Files  10 passed (10)
+      Tests  157 passed | 1 skipped (158)
+
+The skipped test is the single live-network SSRF success path, gated behind
+ALLOW_NETWORK_TESTS=1 so the suite stays green offline.
+
+
+--------------------------------------------------------------------------------
+ 7. REGRESSION CHECK — Task 1 and Task 2 intact
+--------------------------------------------------------------------------------
+  node tests/sqli-login.mjs        -> [NO BYPASS]        (exit 1) — Task 2 holds
+  node tests/enum-and-verbose.mjs  -> identical replies, body keys ['error']
+  npm test                         -> all 55 Task 2 assertions still pass
+
+tests/ssrf-demo.mjs needed one change: it now fetches a CSRF token first.
+Without it the request was refused by the CSRF check BEFORE reaching the SSRF
+guard, so the script would have "passed" for the wrong reason and proved
+nothing about SSRF.
+
+db/migrations/001_init.sql is byte-identical, so the Task 1 report's citation of
+001_init.sql:29 still resolves.

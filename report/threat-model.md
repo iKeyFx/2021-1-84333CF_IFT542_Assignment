@@ -9,14 +9,14 @@
 > documents agree and there is a single source of truth for each view.
 
 **Artefact:** Student Registration web app (Next.js 14 App Router + TypeScript + Postgres).
-**Status:** *Task 2 hardened.* Authentication and database access are remediated; the Task 3
-findings remain planted. Tag `v0-vulnerable` is the untouched "before" build.
+**Status:** *Fully hardened (Tasks 2 and 3).* All planted findings are remediated. Tag
+`v0-vulnerable` is the untouched "before" build; `v1-hardened-task2` is the authentication pass;
+`v2-hardened-task3` is the application/configuration pass.
 **Scope:** Isolated localhost, fictitious data. See `ETHICS.md`.
 
-Remaining sinks are tagged in source with `// [VULN: <name> — <Task>]`; remediated ones with
-`// [FIXED — Task 2: <name>]`. For the full vulnerability register with file:line, STRIDE ID, risk
-rank, and OWASP category, see **Appendix A** of the primary document; for what Task 2 changed, see
-**Appendix B**.
+Remediated sinks are tagged in source with `// [FIXED — Task N: <name>]`. For the full
+vulnerability register with file:line, STRIDE ID, risk rank, and OWASP category, see **Appendix A**
+of the primary document; for what Task 2 changed see **Appendix B**, and for Task 3 **Appendix C**.
 
 ## Delivered — Task 2
 
@@ -30,7 +30,7 @@ rank, and OWASP category, see **Appendix A** of the primary document; for what T
 | **T9 / session fixation** | A fresh `randomUUID()` session id is minted on every successful login and the presented id is **deleted**, so a fixed session cannot cross the authentication boundary. | `src/lib/session.ts` |
 | *(supporting)* | Input validation — email format and length bounds (3–254), password length bounds (8–128, a pre-hash DoS cap), and rejection of non-string values rather than `String()` coercion. | `src/lib/validate.ts` |
 
-Verified by 54 automated tests (`npm test`, see `tests/README.md`) and captured in
+Verified by the automated suite (`npm test`, see `tests/README.md`) and captured in
 `evidence/task2/run-output-after.txt`.
 
 ### Residual weaknesses, stated honestly
@@ -47,18 +47,40 @@ Verified by 54 automated tests (`npm test`, see `tests/README.md`) and captured 
 - **Timing is equalised, not constant.** The decoy hash removes the ~30 ms Argon2 step function;
   a sub-millisecond difference in the database round trip (0 rows vs 1 row) remains.
 
-## Planned hardening (Task 3 — not done)
+## Delivered — Task 3
 
-- **T3 / stored XSS:** render `display_name` as text (`{value}`) / sanitise on input; add a CSP.
-- **T2 / CSRF:** per-session CSRF token on forms + verify; set `SameSite=Lax` (and `Secure` over HTTPS).
-- **T6 / SSRF:** allowlist schemes/hosts; resolve and block loopback/link-local/private IPs; disable
-  redirects; re-check after DNS resolution.
-- **T9 / config:** load the session secret from env and fail closed if absent; remove/rotate the
-  default admin account; turn `DEBUG` off outside development.
+| Threat | Control implemented | Where |
+| --- | --- | --- |
+| **T3 / stored XSS** | Contextual output encoding: both `dangerouslySetInnerHTML` sinks now render `{user.display_name}` as a text node, so a stored payload is displayed literally. The payload is deliberately still stored VERBATIM — encoding at output is the control; input filtering would be the weaker half and would hide that the value survives intact. Backed by a nonce-based CSP. | `src/app/dashboard/page.tsx`, `src/app/profile/page.tsx`, `src/lib/security-headers.ts` |
+| **T2 / CSRF** | Signed double-submit token: `<id>.HMAC-SHA256(SESSION_SECRET, id)` bound to the **session id**, so it rotates at the authentication boundary and cannot be forged by an attacker who can write but not read cookies (the sid is `HttpOnly`). Enforced on all seven authenticated POSTs. `/api/login` gets the Origin check only, being pre-session. | `src/lib/csrf.ts`, `src/app/_components/CsrfField.tsx`, all `src/app/api/*` handlers |
+| **T2 / cookie flags** | Session cookie now `HttpOnly; SameSite=Lax; Secure`. Lax rather than Strict so inbound links do not appear logged-out; Lax already blocks the cross-site POST that CSRF needs. | `src/lib/session.ts` |
+| **T6 / SSRF** | Scheme allowlist (http/https), destination **host allowlist**, DNS resolution with rejection of loopback / RFC1918 / link-local (incl. `169.254.169.254`) / reserved / IPv4-mapped-IPv6 addresses, manual redirect handling that re-validates **every hop**, 5 s timeout, 64 KB body cap. Blocked responses are byte-identical so the reason is not an internal-network oracle. | `src/lib/url-guard.ts`, `src/app/api/admin/url-preview/route.ts` |
+| **T7 / T9 misconfiguration** | `DEBUG` fail-closed (`=== "true"`, was fail-open); `SESSION_SECRET` required in production and now genuinely load-bearing as the CSRF HMAC key; dead `DEFAULT_ADMIN` deleted; default admin password rotated off `admin123` to `ADMIN_PASSWORD` env with a strong fallback; `productionBrowserSourceMaps: false`; full security-header set. | `src/lib/config.ts`, `next.config.js`, `src/middleware.ts`, `db/hash-passwords.mjs` |
+| **T4 / repudiation** | Structured JSON-lines security logging answering who/what/when, with three required event types: `auth.login.failed`, `authz.denied`, `validation.rejected` (plus `csrf.rejected` and `ssrf.blocked`). Redaction is enforced **inside** the logger — emails masked, and a deny-list drops password/hash/token/session/secret fields even if a caller passes them. | `src/lib/logger.ts`, `src/lib/auth.ts` |
 
-> The session cookie's missing `SameSite`/`Secure` and the `admin@campus.local` / `admin123`
-> account were left **intentionally untouched** by the Task 2 work — they belong to Task 3 and its
-> CSRF proof-of-concept depends on them.
+The `authz.denied` seam is worth noting: `currentAdmin()` previously returned `null` for both
+"anonymous" and "authenticated but not an admin", collapsing exactly the case worth alerting on. It
+now distinguishes them.
+
+### Residual weaknesses, stated honestly
+
+- **SSRF TOCTOU / DNS rebinding.** A name can re-resolve between our `lookup()` and undici's
+  `connect()`. Closing it needs a custom undici `Agent` whose connect hook pins the validated IP.
+  Not implemented; disclosed.
+- **Origin check allows a MISSING Origin.** Non-browser clients send none, and the Task 2 PoC
+  scripts depend on that. Browsers always send one cross-site, so the check still works where it
+  matters — but it is a secondary control behind the token, not a primary one.
+- **HSTS is inert on localhost.** Browsers ignore it over plain HTTP. Emitted in production for
+  completeness; it would only take effect behind TLS.
+- **The development CSP is not the production CSP.** `next dev` needs `'unsafe-eval'` (webpack HMR)
+  and inline styles. The strict policy applies to `next build && next start`, which is where the
+  evidence was captured.
+- **One `next` advisory remains** with no fix inside the 14.2 line (`npm audit fix --force` would
+  install Next 16, a breaking major). Recorded rather than hidden.
+- **`X-Forwarded-For` is trusted** for the client IP in rate limiting and log lines. Acceptable
+  only because this is a localhost artefact; behind a real proxy it must come from a trusted hop.
+- **Upload size cap still absent** — the other half of T8. Out of scope for Task 3's five
+  deliverables, so T8's residual is not yet fully realised.
 
 ## Reproduction
 

@@ -70,9 +70,10 @@ flowchart TB
 
 > **All `file:line` references in §2, §3, §4 and Appendix A describe the tagged `v0-vulnerable`
 > baseline** (commit `b42df0a`) and are left unchanged as the historical record of the threat model.
-> Task 2 has since remediated T1, T5, T7, T8 and the T9 fixation component; the line numbers in the
-> current working tree therefore differ. See **Appendix B** for the remediation status, the controls
-> implemented, and their new locations.
+> **Every threat T1–T9 has since been remediated** — Task 2 closed T1, T5, T7, T8 and the T9
+> fixation component; Task 3 closed T2, T3, T4, T6 and the remaining T9 items. The line numbers in
+> the current working tree therefore differ. See **Appendix B** (Task 2) and **Appendix C** (Task 3)
+> for remediation status, the controls implemented, and their new locations.
 
 | # | STRIDE | Application-specific threat | Planted vulnerability (file : line) |
 |---|--------|------------------------------|--------------------------------------|
@@ -167,13 +168,13 @@ git diff v0-vulnerable -- src/app/api/login/route.ts
 | User enumeration / field disclosure | T7 | 9 | **Closed** | One generic `401 {"error":"Invalid email or password"}` for every failure mode; unknown-email and wrong-password replies are byte-identical. Timing equalised via a decoy Argon2id verification. | `api/login/route.ts:44`, `107–112`; `lib/password.ts` | `tests/auth-login.test.ts` (`toEqual(wrongPwBody)`) |
 | No rate limiting on login | T8 | 6 | **Closed** (login half) | Per-IP fixed window: 5 failures / 60 s, then `429` + `Retry-After`, checked before any DB or hashing work. Failures only; success clears the bucket. | `lib/rate-limit.ts`, `api/login/route.ts:57–66` | `tests/rate-limit.test.ts`; `evidence/task2/run-output-after.txt` §5 |
 | No session-id regeneration (fixation) | T9 | 2 | **Closed** | Fresh `randomUUID()` on every successful login; the presented id is deleted, not re-pointed. | `lib/session.ts:43–63` | `tests/session-regeneration.test.ts`; `evidence/task2/run-output-after.txt` §6 |
-| Stored XSS (display name) | T3 | 4 | Open (Task 3) | — | unchanged | — |
-| No CSRF on state-changing POSTs | T2 | 5 | Open (Task 3) | — | unchanged | — |
-| No SameSite on session cookie | T2 | 5 | Open (Task 3) | — | unchanged | — |
-| SSRF in admin URL preview | T6 | 8 | Open (Task 3) | — | unchanged | `node tests/ssrf-demo.mjs` still confirms |
-| Debug mode on | T7 | 9 | Open (Task 3) | Login route no longer reads `DEBUG`, but the flag still defaults to `true` and still drives the URL-preview handler. | unchanged | — |
-| Hardcoded session secret | T9 | 2 | Open (Task 3) | — | unchanged | — |
-| Default admin with well-known password | T9 | 2 | Open (Task 3) | — | unchanged | asserted still working in `tests/auth-login.test.ts` |
+| Stored XSS (display name) | T3 | 4 | **Closed in Task 3** | see Appendix C | — | — |
+| No CSRF on state-changing POSTs | T2 | 5 | **Closed in Task 3** | see Appendix C | — | — |
+| No SameSite on session cookie | T2 | 5 | **Closed in Task 3** | see Appendix C | — | — |
+| SSRF in admin URL preview | T6 | 8 | **Closed in Task 3** | see Appendix C | — | — |
+| Debug mode on | T7 | 9 | **Closed in Task 3** | see Appendix C | — | — |
+| Hardcoded session secret | T9 | 2 | **Closed in Task 3** | see Appendix C | — | — |
+| Default admin with well-known password | T9 | 2 | **Closed in Task 3** | see Appendix C | — | — |
 
 **Supporting control added:** input validation (`lib/validate.ts`) — email format plus 3–254 length
 bounds, password 8–128 length bounds, and rejection of non-string values rather than `String()`
@@ -192,6 +193,56 @@ coercion. `PASSWORD_MIN` is capped at 8 precisely so the Task 3 default admin (`
   a sub-millisecond database round-trip difference remains.
 - T9's residual of 5 depends on **all three** of its components. Only session fixation is closed;
   the default admin and the hardcoded secret remain, so T9 is still live at its original score.
+
+---
+
+## Appendix C — Task 3 remediation status
+
+Task 3 closed the remaining application and configuration findings and delivered the security
+logging that T4 has required since this document was written. Baseline for comparison is tag
+`v1-hardened-task2`:
+
+```
+git diff v1-hardened-task2 v2-hardened-task3
+```
+
+| Planted vulnerability (Appendix A) | STRIDE | Risk # | Status | Control implemented | New location | Evidence |
+|---|---|---|---|---|---|---|
+| Stored XSS (display name) | T3 | 4 | **Closed** | Contextual output encoding — both sinks render `{user.display_name}` as a text node. The payload is still stored VERBATIM; encoding at output is the control, and input filtering was deliberately not used because it is the weaker half and would obscure that the value survives intact. Backed by a nonce-based CSP with no `unsafe-inline` in production. | `app/dashboard/page.tsx`, `app/profile/page.tsx`, `lib/security-headers.ts` | `tests/xss-encoding.test.ts`; `evidence/task3/run-output-after.txt` §1 |
+| No CSRF on state-changing POSTs | T2 | 5 | **Closed** | Signed double-submit token `<id>.HMAC-SHA256(SESSION_SECRET, id)` bound to the session id, verified with `crypto.subtle.verify` (constant-time). Enforced on all 7 authenticated POSTs; `/api/login` is origin-checked only, being pre-session. | `lib/csrf.ts`, `app/_components/CsrfField.tsx`, all `api/*` handlers | `tests/csrf.test.ts`; `evidence/task3/run-output-after.txt` §2 |
+| No SameSite on session cookie | T2 | 5 | **Closed** | `HttpOnly; SameSite=Lax; Secure`. Lax not Strict, so inbound links do not appear logged-out while still blocking the cross-site POST CSRF needs. | `lib/session.ts` | `tests/security-headers.test.ts` |
+| SSRF in admin URL preview | T6 | 8 | **Closed** | Scheme allowlist, host allowlist, DNS resolution with loopback/RFC1918/link-local/reserved/IPv4-mapped-IPv6 rejection, per-hop redirect re-validation, 5 s timeout, 64 KB cap. Blocked responses are byte-identical so the reason is not an internal-network oracle. | `lib/url-guard.ts`, `api/admin/url-preview/route.ts` | `tests/ssrf-guard.test.ts`; `evidence/task3/run-output-after.txt` §3 |
+| Debug mode on | T7 | 9 | **Closed** | `DEBUG` is now opt-IN (`process.env.DEBUG === "true"`). It was fail-open: `DEBUG=0`, `DEBUG=off` and production all left it on. No handler returns a stack trace to a client any more. `productionBrowserSourceMaps: false`. | `lib/config.ts`, `next.config.js` | `evidence/task3/run-output-after.txt` §4b |
+| Hardcoded session secret | T9 | 2 | **Closed** | No committed constant is reachable in production — `sessionSecret()` throws if unset there. It is also no longer dead code: it is the HMAC key for the CSRF tokens, which is what makes the fix meaningful rather than cosmetic. | `lib/config.ts` | `tests/csrf.test.ts` (tampered-signature case) |
+| Default admin with well-known password | T9 | 2 | **Closed** | Rotated off `admin123` to `ADMIN_PASSWORD` env with a strong documented fallback, read lazily so `.env` load ordering cannot silently ignore it. | `db/hash-passwords.mjs` | `tests/auth-login.test.ts` asserts `admin123` now returns 401 |
+| *(no planted sink)* Unattributable actions | **T4** | 7 | **Closed** | Structured JSON-lines logging answering who/what/when. Three required event types — `auth.login.failed`, `authz.denied`, `validation.rejected` — plus `csrf.rejected` and `ssrf.blocked`. Redaction enforced inside the logger: emails masked, and a deny-list drops password/hash/token/session/secret-shaped fields even when passed explicitly. | `lib/logger.ts`, `lib/auth.ts` | `tests/logging.test.ts`; `evidence/task3/run-output-after.txt` §5 |
+
+**Supporting controls added:** the full security-header set (CSP with per-request nonce, HSTS,
+`X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy`) in
+`lib/security-headers.ts` + `middleware.ts` + `next.config.js`; and profile input bounds in
+`lib/validate.ts` (a resource limit, explicitly not a sanitiser).
+
+**T4 note.** Appendix A recorded T4 as an *absence of control* with no `file:line`, mapping to
+OWASP **A09 Security Logging & Monitoring Failures**. It now has an implementation. The §3 register
+promised "structured who/what/when audit logs **(D)**" and, under T9, "log denied-authorization
+**(D)**" — both are delivered. The `authz.denied` event is the T9 one: `currentAdmin()` previously
+returned `null` for both anonymous and authenticated-non-admin callers, discarding the only case
+worth alerting on.
+
+**Residual risk after Task 3.** The §3 residual scores anticipated these fixes and stand, with these
+qualifications recorded honestly:
+
+- **T6 residual 3 assumes no TOCTOU.** A DNS-rebinding window remains between our `lookup()` and
+  undici's `connect()`; pinning the resolved IP via a custom undici `Agent` would close it.
+- **T2's Origin check allows a MISSING Origin**, so a non-browser client bypasses that layer. The
+  token is the primary control; the Origin check is secondary.
+- **T8 is still only half-done.** Rate limiting is delivered but the upload size cap is not, so
+  T8's residual of 6 is not yet fully realised.
+- **T9 config residual** now genuinely reflects the register: default admin rotated, secret moved
+  to env and fail-closed, session fixation closed in Task 2.
+- **One `next` advisory remains** with no fix in the 14.2 line; `npm audit fix --force` would
+  install Next 16, a breaking major. Out of scope, recorded not hidden.
+- **HSTS is inert over http on localhost** and is not claimed as an active control here.
 
 ---
 

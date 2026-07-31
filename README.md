@@ -1,16 +1,16 @@
-# IFT542 — Student Registration (Deliberately-Vulnerable Build)
+# IFT542 — Student Registration (Hardened Build)
 
-> ⚠️ **ISOLATED LOCALHOST TEACHING ARTEFACT.** This app *intentionally* contains common web
-> vulnerabilities for a before/after coursework demonstration. **Do not deploy it, do not expose it
-> to a network, and do not put real data in it.** All seeded data is fictitious. See `ETHICS.md`.
+> ⚠️ **ISOLATED LOCALHOST TEACHING ARTEFACT.** This app began as a deliberately-vulnerable
+> build for a before/after coursework demonstration. **Do not deploy it, do not expose it to a
+> network, and do not put real data in it.** All seeded data is fictitious. See `ETHICS.md`.
 
 A prototype university Student Registration portal built with **Next.js 14 (App Router) +
 TypeScript + Tailwind**, backed by **local PostgreSQL** (docker-compose) and **postgres.js**, with
 **custom cookie-session auth** (no third-party provider).
 
-**Build status:** the **Task 2 authentication defects are remediated** (see *Hardened — Task 2*
-below). The Task 3 defects (CSRF, stored XSS, SSRF, debug mode, hardcoded secret, default admin)
-are still deliberately present. Tag `v0-vulnerable` is the untouched baseline.
+**Build status:** **all planted defects are remediated.** Task 2 fixed the authentication and
+database findings; Task 3 fixed the application and configuration findings and added security
+logging. Tags: `v0-vulnerable` (untouched baseline) → `v1-hardened-task2` → `v2-hardened-task3`.
 
 ## Features
 
@@ -67,14 +67,17 @@ npm run db:reset:legacy  # stage v0 PLAINTEXT credentials, then re-hash them
 | Student | `ada.learner@campus.local`   | `ada-pw-2025`  |
 | Student | `grace.coder@campus.local`   | `grace-pw-2025`|
 | Student | `nova.trainee@campus.local`  | `nova-pw-2025` |
-| Admin   | `admin@campus.local`         | `admin123`     |
+| Admin   | `admin@campus.local`         | see note below |
 
 (Other students: `linus.pupil`, `mira.scholar`, `otto.student` — all `@campus.local`, password
 `<first-name>-pw-2025`.)
 
-The passwords themselves are unchanged, but they are **no longer stored as plaintext** — the
-database holds Argon2id digests (`$argon2id$v=19$m=19456,p=1,t=2$…`). The plaintext values live
-only in `db/hash-passwords.mjs` (`DEMO_PASSWORDS`), which hashes them at seed time.
+The student passwords are unchanged, but they are **no longer stored as plaintext** — the database
+holds Argon2id digests (`$argon2id$v=19$m=19456,p=1,t=2$…`). The plaintext values live only in
+`db/hash-passwords.mjs` (`demoPasswords()`), which hashes them at seed time.
+
+**The admin password was rotated in Task 3.** It is no longer `admin123`; it comes from the
+`ADMIN_PASSWORD` environment variable, falling back to `Adm1n-Str0ng-Dummy-2026-x7QF`.
 
 ## Hardened — Task 2
 
@@ -103,11 +106,32 @@ CONSTRAINT credentials_password_hash_argon2id CHECK (password_hash LIKE '$argon2
 New dependencies: `argon2` (runtime), `vitest` (dev). Evidence:
 [`evidence/task2/run-output-after.txt`](evidence/task2/run-output-after.txt).
 
-### Still vulnerable (Task 3, by design)
+## Hardened — Task 3
 
-CSRF (no `SameSite`/`Secure` on the session cookie), stored XSS, SSRF in the admin URL preview,
-`DEBUG` on by default, the hardcoded `SESSION_SECRET`, and the `admin@campus.local` / `admin123`
-default account. These are a separate deliverable and their PoCs still reproduce.
+The remaining application and configuration findings. Diff with
+`git diff v1-hardened-task2 v2-hardened-task3`.
+
+| Control | Where |
+| --- | --- |
+| **Contextual output encoding** — both `dangerouslySetInnerHTML` sinks render `{user.display_name}` as a text node. The payload is still stored verbatim and rendered inert; input filtering is deliberately not used. | `src/app/dashboard/page.tsx`, `src/app/profile/page.tsx` |
+| **Content-Security-Policy** with a per-request nonce — strict in production (no `unsafe-inline`, no `unsafe-eval`), relaxed in dev only for webpack HMR. Plus HSTS, `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy`. | `src/lib/security-headers.ts`, `src/middleware.ts`, `next.config.js` |
+| **Anti-CSRF tokens** — signed double-submit, `<id>.HMAC-SHA256(SESSION_SECRET, id)` bound to the session id, on all 7 authenticated POSTs. Plus an Origin/Referer check. | `src/lib/csrf.ts`, `src/app/_components/CsrfField.tsx` |
+| **Session cookie** — `HttpOnly; SameSite=Lax; Secure`. | `src/lib/session.ts` |
+| **SSRF guard** — scheme + host allowlist, DNS resolution with loopback/private/link-local/metadata rejection, per-hop redirect re-validation, 5 s timeout, 64 KB cap. | `src/lib/url-guard.ts` |
+| **Fail-closed config** — `DEBUG` opt-in, `SESSION_SECRET` required in production (and now load-bearing as the CSRF key), `DEFAULT_ADMIN` deleted, `productionBrowserSourceMaps: false`. | `src/lib/config.ts`, `next.config.js` |
+| **Default admin rotated** off `admin123` to `ADMIN_PASSWORD` with a strong fallback. | `db/hash-passwords.mjs` |
+| **Structured security logging** — JSON lines with who/what/when; emails masked and secret-shaped fields dropped inside the logger. | `src/lib/logger.ts`, `src/lib/auth.ts` |
+
+Evidence: [`evidence/task3/run-output-after.txt`](evidence/task3/run-output-after.txt).
+
+### Known residuals (documented, not hidden)
+
+- SSRF TOCTOU: a DNS-rebinding window remains between our lookup and undici's connect.
+- The Origin check allows a *missing* Origin, so non-browser clients bypass that layer — the token
+  is the primary control.
+- HSTS is inert over plain HTTP on localhost.
+- One `next` advisory has no fix inside the 14.2 line (`npm audit fix --force` would install Next 16).
+- The upload size cap (the other half of T8) is not implemented.
 
 ## Project layout
 
