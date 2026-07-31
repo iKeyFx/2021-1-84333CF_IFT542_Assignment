@@ -14,13 +14,31 @@ npm test              # 54 tests; starts a dev server itself if one isn't up
 otherwise spawns and tears one down itself — so it is a single command from
 cold. It fails early with an actionable message if the database is not migrated.
 
-| File | Proves |
-| --- | --- |
-| `auth-login.test.ts` | Valid student and admin logins work; wrong password, unknown email and every validation failure return one byte-identical generic 401; no stack/query/hash ever reaches the client |
-| `sqli-parameterized.test.ts` | Injection strings in the email field are bound as **data** — generic 401, no session issued, zero rows matched, database untouched, no `sql.unsafe` left in the handler |
-| `password-storage.test.ts` | Stored passwords are `$argon2id$` PHC strings with per-row salts and the documented work factor; the plaintext column is gone; the CHECK constraint rejects plaintext |
-| `rate-limit.test.ts` | 5 failures per IP per 60 s, then `429` + `Retry-After`; per-IP not global; success clears the bucket |
-| `session-regeneration.test.ts` | A presented `sid` is destroyed and replaced on login (fixation closed); malformed cookies do not 500 |
+### The four required proofs
+
+| # | Required proof | Test file | Key assertion |
+| --- | --- | --- | --- |
+| 1 | **Valid login works** | `auth-login.test.ts` | `200`, `body.ok === true`, a `sid=<uuid>` cookie is issued (student *and* admin) |
+| 2 | **Invalid credentials rejected** | `auth-login.test.ts` | `401` + `{"error":"Invalid email or password"}`, no cookie issued |
+| 3 | **Injection string treated as DATA** | `sqli-parameterized.test.ts` | generic `401` *and* `` sql`… WHERE email = ${payload}` `` returns **0 rows**, no session created, tables intact |
+| 4 | **Stored passwords are Argon2id, never plaintext** | `password-storage.test.ts` | every value `.startsWith("$argon2id$")`; no stored value equals or contains a known plaintext |
+
+The two extra controls get a file each:
+
+| Control | Test file | Key assertion |
+| --- | --- | --- |
+| Rate limiting | `rate-limit.test.ts` | 5 failures per IP per 60 s, then `429` + `Retry-After`; per-IP not global; even a *correct* password is refused once throttled |
+| Session regeneration | `session-regeneration.test.ts` | a presented `sid` is replaced **and deleted** on login; malformed cookies do not 500 |
+
+### Full coverage per file
+
+| File | Tests | Proves |
+| --- | --- | --- |
+| `auth-login.test.ts` | 16 | Valid student and admin logins work; wrong password, unknown email and every validation failure return one byte-identical generic 401; no stack/query/hash ever reaches the client |
+| `sqli-parameterized.test.ts` | 11 | Injection strings in the email field are bound as **data** — generic 401, no session issued, zero rows matched, database untouched, no `sql.unsafe` left in the handler |
+| `password-storage.test.ts` | 13 | Stored passwords are `$argon2id$` PHC strings with per-row salts and the documented work factor; the plaintext column is gone; the CHECK constraint rejects plaintext |
+| `rate-limit.test.ts` | 7 | 5 failures per IP per 60 s, then `429` + `Retry-After`; per-IP not global; success clears the bucket |
+| `session-regeneration.test.ts` | 5 | A presented `sid` is destroyed and replaced on login (fixation closed); malformed cookies do not 500 |
 
 Test source IPs are spoofed via `X-Forwarded-For` from the IANA benchmarking
 range `198.18.0.0/15`, randomised per run, so the rate limiter never makes the

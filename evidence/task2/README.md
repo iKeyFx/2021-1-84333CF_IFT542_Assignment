@@ -4,11 +4,19 @@ Planted in `src/app/api/login/route.ts` + `src/lib/`. Start the stack
 (`npm run db:reset` then `npm run dev`) before running the scripts.
 
 **Before / after.** The vulnerable baseline is tag `v0-vulnerable`; its capture is
-`run-output.txt`. The hardened capture is `run-output-after.txt`. The code diff is:
+`run-output.txt`. The hardened capture is `run-output-after.txt`.
+
+The side-by-side code excerpt for the login query — the centrepiece of Task 2 — is in
+[`login-query-before-after.md`](login-query-before-after.md). Regenerate the full diff with:
 
 ```
-git diff v0-vulnerable -- src/app/api/login/route.ts
+git diff v0-vulnerable v1-hardened-task2 -- src/app/api/login/route.ts
 ```
+
+> **Plaintext handling.** `run-output.txt` (the v0 capture) deliberately shows cleartext
+> passwords — that *is* the vulnerability evidence. In `run-output-after.txt` the plaintext is
+> redacted, since the point of that file is that plaintext no longer exists. The fictitious demo
+> passwords remain documented in the root `README.md` for reproduction.
 
 > The `.mjs` scripts below are the **unchanged v0 proof-of-concepts**. Their narration still
 > asserts that the app is vulnerable — read the data they print, not their prose. Their new
@@ -35,6 +43,10 @@ git diff v0-vulnerable -- src/app/api/login/route.ts
   ```
 - Capture: every row prefixed `$argon2id$v=19$m=19456,p=1,t=2$`, distinct salts, and a
   `credentials` table with no `password` column.
+- **Screenshot to take** (`07-argon2id-hashes.png`, matching the `evidence/task1/` convention):
+  run the two commands above in one terminal and screenshot the combined output. `left(...,46)`
+  truncates each digest so the screenshot shows the `$argon2id$` prefix and parameters without
+  publishing full hashes. The text capture of the same output is in `run-output-after.txt` §2.
 - **The migration itself:** `npm run db:reset:legacy` stages the exact v0 plaintext credentials and
   then re-hashes them, printing before/after in one command. The default `npm run db:reset` never
   writes plaintext at any instant. Both end in the same schema — see `db/hash-passwords.mjs`.

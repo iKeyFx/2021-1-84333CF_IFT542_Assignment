@@ -91,9 +91,9 @@ $ npm run db:reset:legacy
   → seeding fictitious data ... done
   → staging v0 PLAINTEXT credentials (demo only) ... done (7)
     before:
-      ada.learner@campus.local     ada-pw-2025
-      grace.coder@campus.local     grace-pw-2025
-      linus.pupil@campus.local     linus-pw-2025
+      ada.learner@campus.local     [REDACTED — plaintext, 11 chars]
+      grace.coder@campus.local     [REDACTED — plaintext, 13 chars]
+      linus.pupil@campus.local     [REDACTED — plaintext, 13 chars]
   → hashing credentials with Argon2id ... done (re-hashed 7, seeded 0)
     after:
       ada.learner@campus.local     $argon2id$v=19$m=19456,p=1,t=2$y6knrmufm…
@@ -103,6 +103,10 @@ $ npm run db:reset:legacy
 Seeded: 6 students, 5 courses, 8 enrolments, 1 admin.
 Credentials: 7 rows, all Argon2id, no plaintext column.
 Migration + seed complete.
+
+The plaintext values in the "before" pane are redacted here. They are the same
+fictitious demo passwords listed in README.md; the unredacted v0 capture is
+retained in run-output.txt, where the cleartext IS the vulnerability evidence.
 
 The DEFAULT path, `npm run db:reset`, never writes plaintext at any instant:
 
