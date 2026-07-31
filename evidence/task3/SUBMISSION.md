@@ -60,7 +60,7 @@ npm run build && npm start     # for 19 (strict CSP + HSTS)
 | 15 | `15-xss-neutralised.png` | Browser: `/profile` → set display name to `<img src=x onerror="alert('xss-on-dashboard')">` → save → load `/dashboard`. Then run the psql query below in a terminal. | The dashboard showing the payload **as literal text**, no alert dialog; **and** the psql output proving the DB still holds it verbatim. Both halves in one frame if possible. |
 | 16 | `16-csrf-rejected.png` | Open `evidence/task3/csrf-poc.html` while logged in; show the Network tab. | The POST to `/api/profile` returning **303 → `/login`**, and `/dashboard` still showing the real display name. **Not a 403** — see below |
 | 16b | `16b-csrf-layers.png` | `node evidence/task3/capture-csrf-layers.mjs` | All three layers: `303` anonymous, `403` bad-origin, `403` missing-token, then the control `303 /profile?saved=1` |
-| 17 | `17-cookie-flags.png` | Browser devtools → Application → Cookies → `127.0.0.1` | The `sid` cookie row with **HttpOnly ✓, Secure ✓, SameSite = Lax**. This is also the proof that `Secure` works over `http://127.0.0.1` |
+| 17 | `17-cookie-flags.png` | Browser devtools → Application → Cookies → `127.0.0.1` | The `sid` cookie row with **HttpOnly ✓, Secure ✓, SameSite = Lax**. This is also the proof that `Secure` works over `http://127.0.0.1`. **Blur the Value column on BOTH `sid` and `csrf`** — see *What to redact* |
 | 18 | `18-ssrf-blocked.png` | `node tests/ssrf-demo.mjs` | `HTTP status of preview call: 403`, `URL not allowed`, and the `[SSRF BLOCKED]` line |
 | 19 | `19-security-headers.png` | `npm run build && npm start`, then `curl -I http://127.0.0.1:3000/login` | CSP with `'nonce-…'` and **no `unsafe-`**, plus HSTS, nosniff, `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy` |
 | 20 | `20-admin-rotated.png` | Two login attempts as `admin@campus.local` | rotated password → `200 … "role":"admin"`; `admin123` → `401 {"error":"Invalid email or password"}` |
@@ -91,9 +91,47 @@ docker compose exec postgres psql -U ift542 -d ift542 \
   -c "SELECT display_name FROM profiles WHERE email='ada.learner@campus.local';"
 ```
 
-**Nothing needs redacting.** All data is fictitious (`@campus.local`, invented names, no PII — see
-`ETHICS.md`). The log samples are already masked by the logger itself. The rotated admin password is
-a documented dummy, not a real secret.
+### What to redact
+
+Most of this needs nothing: the data is fictitious (`@campus.local`, invented names, no PII — see
+`ETHICS.md`) and the log samples are masked by the logger itself. **Three things are exceptions.**
+
+**1. Screenshot 17 — the cookie VALUES.** A session id is a **bearer credential**: anyone holding it
+is that user until it expires. It is the same reasoning that makes `ir/revoke-sessions.mjs` refuse to
+write session ids into the audit log. The practical risk here is nil — localhost only, fictitious
+account, the session is destroyed by the next `db:reset` — but a security submission should not
+publish a live credential just because that credential happens to be worthless.
+
+**The trap:** blurring the `sid` row alone does not redact it, because the `csrf` cookie *contains
+the session id*:
+
+```
+sid  = 17663e3b-0b02-44f2-8a18-aee89b319f05
+csrf = 17663e3b-0b02-44f2-8a18-aee89b319f05.E03fI0fltBqapLXFgfhTR_g--IinaA8idWlJAChg-WE
+       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the same value, before the dot
+```
+
+That is by design — the token is `<sid>.HMAC-SHA256(SESSION_SECRET, sid)`, which is what binds it to
+the session. But it means **you must blur the Value column on both rows, or neither is redacted.**
+
+Keep the first block (`17663e3b-…`) visible if you want it to look real; blur the rest. The
+**Flags columns must stay fully readable** — `HttpOnly`, `Secure` and `SameSite=Lax` are the actual
+evidence, and the value contributes nothing to it.
+
+**2. `npm run ir:rotate-secrets --yes` output** — prints a live password and a live `SESSION_SECRET`,
+unmasked, because an operator has to use them. Do not screenshot it at all; its evidence is already
+in `run-output-after.txt` §8d with both values redacted.
+
+**3. Operator identity in screenshots 23–25** — `ir:*` records `<windows-user>@<machine-name>`. Not
+secret, and attribution is the point, but there is no reason to publish your hostname. Pin it:
+
+```bash
+IR_OPERATOR="responder@ift542-lab" npm run ir:status
+```
+
+Not sensitive, for the avoidance of doubt: the CSRF token's HMAC (computed with the *documented*
+development secret), the rotated admin password in `README.md` (a documented dummy), and the CSP
+nonce (single-use, already spent).
 
 ### Screenshot 16 — why the browser shows 303, not 403
 
