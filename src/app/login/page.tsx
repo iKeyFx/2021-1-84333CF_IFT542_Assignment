@@ -1,0 +1,96 @@
+"use client";
+
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+
+export default function LoginPage() {
+  const router = useRouter();
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [details, setDetails] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  async function onSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    setDetails(null);
+    setLoading(true);
+    try {
+      const res = await fetch("/api/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
+      const data = await res.json();
+      if (res.ok && data.ok) {
+        router.push("/dashboard");
+        router.refresh();
+        return;
+      }
+      // The API returns field-specific messages (user enumeration) and, when a
+      // DB error occurs with DEBUG on, a stack trace + the raw SQL query. We
+      // display whatever comes back verbatim so the leak is visible in the UI.
+      setError(data.error ?? "Login failed");
+      if (data.stack || data.query) {
+        setDetails(JSON.stringify({ query: data.query, stack: data.stack }, null, 2));
+      }
+    } catch (err: any) {
+      setError(err?.message ?? "Network error");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="max-w-md mx-auto">
+      <h1 className="text-xl font-bold mb-4">Student Login</h1>
+
+      <form onSubmit={onSubmit} className="space-y-4 bg-white p-6 rounded border border-slate-200">
+        <div>
+          <label className="block text-sm font-medium mb-1">Email</label>
+          <input
+            type="text"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            className="w-full border border-slate-300 rounded px-3 py-2"
+            placeholder="ada.learner@campus.local"
+            autoComplete="off"
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-medium mb-1">Password</label>
+          <input
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            className="w-full border border-slate-300 rounded px-3 py-2"
+            autoComplete="off"
+          />
+        </div>
+        <button
+          type="submit"
+          disabled={loading}
+          className="w-full bg-brand text-white rounded py-2 font-medium disabled:opacity-60"
+        >
+          {loading ? "Signing in…" : "Sign in"}
+        </button>
+      </form>
+
+      {error && (
+        <div className="mt-4 rounded border border-red-300 bg-red-50 p-3 text-sm text-red-800">
+          <p className="font-medium">{error}</p>
+          {details && (
+            <pre className="mt-2 overflow-x-auto text-xs whitespace-pre-wrap">{details}</pre>
+          )}
+        </div>
+      )}
+
+      <div className="mt-6 text-xs text-slate-500 space-y-1">
+        <p className="font-medium text-slate-700">Demo accounts (fictitious):</p>
+        <p>Student — ada.learner@campus.local / ada-pw-2025</p>
+        <p>Admin — admin@campus.local / admin123</p>
+      </div>
+    </div>
+  );
+}

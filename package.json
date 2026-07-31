@@ -1,0 +1,32 @@
+{
+  "name": "ift542-student-registration-vulnerable",
+  "version": "0.1.0",
+  "private": true,
+  "description": "ISOLATED LOCALHOST TEACHING ARTEFACT — deliberately-vulnerable Student Registration app for IFT542 web-security coursework. Do NOT deploy or expose publicly.",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "db:up": "docker compose up -d",
+    "db:down": "docker compose down",
+    "db:wait": "node db/wait.mjs",
+    "db:migrate": "node db/migrate.mjs",
+    "db:reset": "docker compose up -d && node db/wait.mjs && node db/migrate.mjs"
+  },
+  "dependencies": {
+    "next": "14.2.5",
+    "postgres": "3.4.4",
+    "react": "18.3.1",
+    "react-dom": "18.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "20.14.10",
+    "@types/react": "18.3.3",
+    "@types/react-dom": "18.3.0",
+    "autoprefixer": "10.4.19",
+    "postcss": "8.4.39",
+    "tailwindcss": "3.4.6",
+    "typescript": "5.5.3"
+  }
+}

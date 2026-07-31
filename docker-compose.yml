@@ -1,0 +1,26 @@
+# ============================================================================
+#  Local PostgreSQL for the IFT542 teaching artefact.
+#  Bound to 127.0.0.1 ONLY — this database must never be reachable off-host.
+#  Fictitious teaching data only.
+# ============================================================================
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: ift542_postgres
+    environment:
+      POSTGRES_USER: ift542
+      POSTGRES_PASSWORD: ift542_dev_pw
+      POSTGRES_DB: ift542
+    ports:
+      # 127.0.0.1 prefix => published on loopback only, not on the LAN.
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ift542 -d ift542"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  pgdata:

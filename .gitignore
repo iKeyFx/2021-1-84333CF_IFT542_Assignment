@@ -1,0 +1,22 @@
+# Dependencies
+/node_modules
+
+# Next.js build output
+/.next
+/out
+
+# Local env (never commit real secrets)
+.env
+.env.local
+
+# Runtime upload storage (fictitious teaching files only)
+/uploads/*
+!/uploads/.gitkeep
+
+# Postgres docker volume artefacts (if any leak locally)
+/pgdata
+
+# Logs / OS cruft
+*.log
+.DS_Store
+Thumbs.db

