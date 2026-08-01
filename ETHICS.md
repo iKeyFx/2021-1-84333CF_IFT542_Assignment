@@ -105,12 +105,9 @@ I declare that, in producing and submitting this coursework artefact:
 
 | | |
 |---|---|
-| **Student ID** | `2021-1-84333CF` |
+| **Full name** | Abdulganiy Sodiq Abiodun |
+| **Matriculation number** | `2021/1/84333CF` |
 | **Course** | `IFT542` — Web Security |
 | **Artefact** | Student Registration portal (localhost teaching build) |
-| **Full name** | ................................................................ |
-| **Date** | ................................................................ |
+| **Date** | 1 August 2026 |
 
-> Student ID, Course and Artefact are pre-filled. **Full name** and **Date** are deliberately left
-> blank: they are the student's own attestation to the ten clauses above, and are completed by hand
-> on the printed or exported copy at the point of submission.
