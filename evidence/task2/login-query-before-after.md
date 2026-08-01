@@ -114,7 +114,7 @@ $ npx vitest run tests/sqli-parameterized.test.ts
       Tests  11 passed (11)
 ```
 
-The transcript below is the original capture, taken with the standalone `sqli-login.mjs` script
+The transcript below was produced by the standalone `sqli-login.mjs` script
 that was removed before submission (the coursework forbids shipping reusable payloads). It is
 reproduced verbatim because it is a record of a command actually run:
 

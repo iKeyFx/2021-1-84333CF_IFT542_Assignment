@@ -2,7 +2,7 @@
 //  Task 3, item 26 — incident-response controls.
 //
 //  Proves the four CORRECTIVE controls the risk register promised
-//  (report/task1-threat-model.md §3) are real and enforced, not documented:
+//  (report/2021-1-84333CF_IFT542_report.md Appendix A) are real and enforced, not documented:
 //
 //    T1  session revocation             ir/revoke-sessions.mjs
 //    T9  invalidate sessions on leak    ir/rotate-secrets.mjs

@@ -5,8 +5,8 @@
 > [`ETHICS.md`](../ETHICS.md).
 >
 > One page, six stages. The worked example against a simulated intrusion is
-> [`incident-record.md`](incident-record.md); the long form with every command's real output is
-> [`appendix/response-runbook.md`](appendix/response-runbook.md).
+> [`incident-record.md`](incident-record.md); the real output of every command below is
+> `evidence/task3/run-output-after.txt` §7–§9.
 
 ## 1. Preparation
 
@@ -29,7 +29,7 @@ matter in volume — many for one IP, or one IP across many accounts, indicates 
 Run `npm run ir:status` first: it is read-only, takes no scope and needs no confirmation, so you
 can see live sessions, locked accounts and audit health without committing to any change. Classify
 severity 1–4 (authentication bypass or admin compromise is severity 1) and record the incident id
-now, because every subsequent command requires it. Capture `ir:status` output *before* touching
+now, because every subsequent command requires it. Record the `ir:status` output *before* touching
 anything — `npm run db:reset` would destroy sessions and application state, and only
 `security_events` survives it.
 

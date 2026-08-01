@@ -1,7 +1,7 @@
 // ============================================================================
 //  ir/force-reset.mjs — containment: lock accounts pending a credential reset
 //  [DELIVERED — Task 3 item 26]  Closes the T5 corrective control
-//  ("forced reset on suspected breach") from report/task1-threat-model.md §3.
+//  ("forced reset on suspected breach") from report/2021-1-84333CF_IFT542_report.md Appendix A.
 //
 //  T5 is the plaintext-password disclosure: the SQLi chain dumped all seven
 //  credentials in cleartext (see report/incident-record.md). Hashing them in
@@ -30,8 +30,8 @@
 //  A real deployment issues a single-use, time-limited, signed token over an
 //  independently-verified channel and lets the USER choose a new password; the
 //  operator never learns it. This artefact has no mail path and no reset UI, so
-//  that flow does not exist here. report/appendix/response-runbook.md §"What a real
-//  deployment adds" states the same thing.
+//  that flow does not exist here. report/incident-runbook.md §5 (Recovery)
+//  states the same thing.
 //
 //  Usage:
 //    npm run ir:force-reset -- --require --all                       (dry run)

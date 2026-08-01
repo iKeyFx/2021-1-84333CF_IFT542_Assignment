@@ -1,7 +1,7 @@
 // ============================================================================
 //  ir/rotate-secrets.mjs — eradication: rotate leaked secrets
 //  [DELIVERED — Task 3 item 26]  Closes the T9 corrective control
-//  ("invalidate sessions on leak") from report/task1-threat-model.md §3.
+//  ("invalidate sessions on leak") from report/2021-1-84333CF_IFT542_report.md Appendix A.
 //
 //  T9 is the finding that the repository shipped a hardcoded SESSION_SECRET and
 //  a default admin account. Both are in git history at tag v0-vulnerable and

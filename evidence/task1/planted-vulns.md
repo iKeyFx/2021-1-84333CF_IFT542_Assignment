@@ -2,8 +2,10 @@
 
 > Isolated localhost teaching artefact — fictitious data, do not deploy. See `ETHICS.md`.
 > Every sink below is tagged in source with a `// [VULN: <name> — <Task>]` comment.
-> The authoritative threat model is [`report/task1-threat-model.md`](../../report/task1-threat-model.md)
-> (STRIDE + risk register + OWASP Appendix A); this file is the flat file-path index.
+> The authoritative threat model is
+> [`report/2021-1-84333CF_IFT542_report.md`](../../report/2021-1-84333CF_IFT542_report.md) —
+> §1.2 STRIDE worksheet, §1.3 risk register, Appendix A full register + OWASP mapping. This file
+> is the flat file-path index.
 
 Regenerate the raw marker list at any time:
 
@@ -39,10 +41,10 @@ admin (#11,#12,#13).
 Task 2: `npx vitest run tests/sqli-parameterized.test.ts tests/auth-login.test.ts`
 (+ `evidence/task2/README.md`).
 Task 3: `npx vitest run tests/ssrf-guard.test.ts tests/xss-encoding.test.ts tests/csrf.test.ts`
-(+ `evidence/task3/README.md`). Captured output: `evidence/task2/run-output.txt`,
+(+ `evidence/task3/README.md`). Recorded output: `evidence/task2/run-output.txt`,
 `evidence/task3/run-output.txt`.
 
-> The standalone v0 proof-of-concept scripts these captures were originally taken with
+> The standalone v0 proof-of-concept scripts these transcripts were originally produced by
 > (`sqli-login.mjs`, `enum-and-verbose.mjs`, `ssrf-demo.mjs`, `xss-payload.txt`, `csrf-poc.html`)
 > were **removed before submission** — the coursework forbids submitting reusable attack payloads.
 > The transcripts still name them because they are unedited records of commands actually run; the

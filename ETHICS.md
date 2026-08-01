@@ -35,9 +35,9 @@ well-established educational projects such as OWASP Juice Shop, WebGoat, and DVW
   rejected; the current password comes from `ADMIN_PASSWORD`, falling back to a documented dummy.
   The retired value remains in the git history at tag `v0-vulnerable` and must never be reused
   anywhere real.
-- Every item listed in `report/task1-threat-model.md` **has been remediated** — Task 2 closed the
-  authentication and database findings, Task 3 the application and configuration findings. See
-  Appendices B, C and D of that document.
+- Every item in the risk register **has been remediated** — Task 2 closed the authentication and
+  database findings, Task 3 the application and configuration findings. Per-finding status is in
+  Appendix A of `report/2021-1-84333CF_IFT542_report.md`.
 
 ## Incident-response exercise
 
@@ -75,20 +75,21 @@ I declare that, in producing and submitting this coursework artefact:
 3. **Data.** All data in this repository is fictitious. Every name is invented, every address uses
    the non-routable `@campus.local` domain, and no real personal data of any person — myself
    included — was entered, processed or stored.
-4. **No third-party impact.** The test suite in `tests/`, the evidence-capture scripts under
-   `evidence/`, and the incident-response commands in `ir/` are hard-wired to
-   `http://127.0.0.1:3000`. They are single, application-specific defensive checks, not reusable
+4. **No third-party impact.** The test suite in `tests/` and the incident-response commands in
+   `ir/` are hard-wired to `http://127.0.0.1:3000` and the local docker-compose database.
+   They are single, application-specific defensive checks, not reusable
    scanners, exploit kits or attack tooling. **No reusable attack payload is submitted:** the
    standalone proof-of-concept scripts written against the `v0-vulnerable` baseline were deleted
    from the submitted tree, and their coverage now lives in the Vitest suite.
 5. **Secrets.** No real credential or secret appears in this repository. The values present in the
    `v0-vulnerable` baseline were planted placeholders forming part of the lesson, and have been
    rotated.
-6. **Honesty of evidence.** The captured outputs, logs, test results and timings submitted as
+6. **Honesty of evidence.** The recorded outputs, logs, test results and timings submitted as
    evidence are genuine records of commands actually run. Where a control is incomplete, a
-   limitation is documented rather than concealed — see the "Known residuals" section of
-   `README.md` and §4.4 of `report/incident-record.md`. Nothing has been fabricated or
-   selectively edited to appear more favourable.
+   limitation is documented rather than concealed — see the residual-risk subsections of
+   Appendix A, Appendix C and Appendix D of `report/2021-1-84333CF_IFT542_report.md`, and §4.4 of
+   `report/incident-record.md`. Nothing has been fabricated or selectively edited to appear more
+   favourable.
 7. **Simulated incident.** `report/incident-record.md` records an authorised simulated exercise. I
    have not represented it, and will not represent it, as a real security breach.
 8. **Responsible handling.** I will keep this repository within the coursework context and will not
@@ -109,8 +110,7 @@ I declare that, in producing and submitting this coursework artefact:
 | **Artefact** | Student Registration portal (localhost teaching build) |
 | **Full name** | ................................................................ |
 | **Date** | ................................................................ |
-| **Signature** | ................................................................ |
 
-> **To submit:** print or export this file, then complete the three blank fields above by hand.
-> Student ID and Course are pre-filled; name, date and signature are deliberately left blank and
-> must be completed by the student personally.
+> Student ID, Course and Artefact are pre-filled. **Full name** and **Date** are deliberately left
+> blank: they are the student's own attestation to the ten clauses above, and are completed by hand
+> on the printed or exported copy at the point of submission.

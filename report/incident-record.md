@@ -29,8 +29,8 @@
 > **Companion document.** This is the detailed incident *record* (evidence item 26). The
 > six-stage summary of the response process — Preparation, Identification, Containment,
 > Eradication, Recovery, Lessons Learned — is the one-page runbook at
-> [`report/incident-runbook.md`](incident-runbook.md) (item 25); the long-form operational detail
-> is in [`report/appendix/response-runbook.md`](appendix/response-runbook.md).
+> [`report/incident-runbook.md`](incident-runbook.md), in which every step is a command rather
+> than a paragraph.
 
 ---
 
@@ -40,7 +40,7 @@ What existed before the incident, honestly stated:
 
 | Capability | State at `v0-vulnerable` |
 |---|---|
-| Threat model | **Yes** — [`report/task1-threat-model.md`](task1-threat-model.md), STRIDE + risk register |
+| Threat model | **Yes** — STRIDE worksheet + risk register, now §1.2–§1.3 and Appendix A of [`report/2021-1-84333CF_IFT542_report.md`](2021-1-84333CF_IFT542_report.md) |
 | Security logging | **None.** Six ad-hoc `console.log` calls, unparseable, one printing a raw email |
 | Audit retention | **None** |
 | Alerting | **None** |
@@ -63,17 +63,17 @@ this incident really illustrates: knowing about a risk is not a control.
 
 The application emitted no security events, so no failed login, no privilege check and no
 outbound fetch left any record. The timeline in §2.3 is **reconstructed from the exploit
-captures** in `evidence/task2/run-output.txt` and `evidence/task3/run-output.txt`, not from
+transcripts** in `evidence/task2/run-output.txt` and `evidence/task3/run-output.txt`, not from
 logs — because there were no logs.
 
 That absence is itself finding **T4** in the risk register ("unattributable actions", rank 7),
 and it is the reason this exercise ends by building an append-only audit sink rather than only
 patching the injection.
 
-> **Note on the timestamps.** The exploit captures are stamped **12:17**, which is *earlier*
+> **Note on the timestamps.** The exploit transcripts are stamped **12:17**, which is *earlier*
 > than the `v0-vulnerable` tag commit at **13:27**. That is not an inconsistency in the record:
 > the exploits were run against the working tree before it was committed and tagged. The code
-> under test at 12:17 is byte-identical to what `b42df0a` later captured.
+> under test at 12:17 is byte-identical to what `b42df0a` later committed.
 
 ### 2.2 Entry point
 
@@ -91,14 +91,14 @@ rows = await sql.unsafe(authQuery);
 
 The email field was concatenated directly into the statement, so input was parsed as **code**.
 
-### 2.3 Timeline (times are WCAST, the capture machine's local zone)
+### 2.3 Timeline (times are WCAST, the recording machine's local zone)
 
 | Time | Event | Evidence |
 |---|---|---|
 | **12:17:31** | **Initial access.** `email = ' OR '1'='1' -- ` submitted to `/api/login`. Server replies `200 {"ok":true,...}` and issues session `a74f9d57-…` as `ada.learner` with **no valid password**. Cookie lifetime 24 h, `HttpOnly` only — no `SameSite`, no `Secure`. | `evidence/task2/run-output.txt` §1 |
 | 12:17:3x | **Discovery.** Unknown vs known email return *different* messages (`"No account exists…"` vs `"Incorrect password…"`), confirming account enumeration. A malformed payload returns **HTTP 500 with `stack` and `query` fields**, disclosing the schema and the literal SQL. | ibid. §2 |
 | 12:17:3x | **Credential access.** All 7 credentials read in **cleartext** — the `credentials.password` column stored raw passwords, including `admin@campus.local / admin123`. | ibid. §3 |
-| 12:17:3x | **Privilege escalation.** The disclosed admin password grants the admin role directly; the hardcoded `SESSION_SECRET` in `src/lib/config.ts:16` (committed to the repository) would have allowed session forgery as a second path. | `report/task1-threat-model.md` T9 |
+| 12:17:3x | **Privilege escalation.** The disclosed admin password grants the admin role directly; the hardcoded `SESSION_SECRET` in `src/lib/config.ts:16` (committed to the repository) would have allowed session forgery as a second path. | `report/2021-1-84333CF_IFT542_report.md` Appendix A, T9 |
 | **12:17:44** | **Lateral movement / SSRF.** As admin, the URL-preview endpoint is asked to fetch `http://127.0.0.1:3000/login`. The server follows it and returns the body — no scheme, host or IP restriction. Any internal service reachable from the server was readable. | `evidence/task3/run-output.txt` §1 |
 | 12:17:4x | **Persistence / impact.** Stored XSS via the profile display name: `<img src=x onerror=…>` saved verbatim and rendered through `dangerouslySetInnerHTML` on `/dashboard`, executing in **any viewer's session including an admin's**. | ibid. §2 |
 | **16:05** | **Baseline completed.** Forged cross-site POST to `/api/profile` with `Origin: null` and no token is **accepted** (`303`, state changed). All six security headers confirmed **absent**. | `evidence/task3/run-output.txt` §4-6 |
@@ -172,8 +172,9 @@ npm run ir:audit-log -- --verify
 npm run ir:status
 ```
 
-Step-by-step form, with expected output and rollback, is in
-[`report/appendix/response-runbook.md`](appendix/response-runbook.md).
+Step-by-step form, with the expected result at each stage, is in
+[`report/incident-runbook.md`](incident-runbook.md). The real output of this cycle is
+`evidence/task3/run-output-after.txt` §7–§9.
 
 ### 3.3 Recovery verification
 
@@ -231,11 +232,11 @@ closed it. This is the compact register; the full analysis is in the threat mode
 | 2 | Build secret rotation (T9 corrective) | **Done** — `ir/rotate-secrets.mjs` |
 | 3 | Build forced credential reset (T5 corrective) | **Done** — `ir/force-reset.mjs` |
 | 4 | Build append-only audit retention (T4 corrective) | **Done** — `ir/audit-log.mjs`, migration 003 |
-| 5 | Write the response runbook | **Done** — `report/incident-runbook.md` (one page, six stages); long form in `report/appendix/response-runbook.md` |
-| 6 | Regression-test every control | **Done** — 182 tests, 11 files |
-| 7 | Log aggregation, alert thresholds, on-call rotation | **Not done** — out of scope for a localhost artefact; see runbook §7 |
+| 5 | Write the response runbook | **Done** — `report/incident-runbook.md` (one page, six stages) |
+| 6 | Regression-test every control | **Done** — `183 passed \| 1 skipped (184)` across 11 files |
+| 7 | Log aggregation, alert thresholds, on-call rotation | **Not done** — out of scope for a localhost artefact; carried as a residual in runbook §6 |
 | 8 | Self-service password reset over a verified channel | **Not done** — no mail path exists; `--complete` is a documented stand-in, not a reset flow |
-| 9 | Upload size cap (other half of T8) | **Not done** — carried as a known residual in `README.md` |
+| 9 | Upload size cap (other half of T8) | **Not done** — carried as a residual in Appendix A of `report/2021-1-84333CF_IFT542_report.md` |
 
 ### 4.4 Residual risk accepted
 
@@ -250,5 +251,5 @@ Carried forward deliberately and documented rather than hidden:
 
 ---
 
-*Prepared as coursework evidence for IFT542, Task 3 item 26. Signed declaration in
+*Prepared as coursework evidence for IFT542, Task 3 item 26. Declaration in
 [`ETHICS.md`](../ETHICS.md).*

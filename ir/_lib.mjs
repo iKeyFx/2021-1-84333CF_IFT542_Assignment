@@ -3,7 +3,7 @@
 //  [DELIVERED — Task 3 item 26]
 //
 //  These are the four CORRECTIVE controls the risk register
-//  (report/task1-threat-model.md §3) promised but never built:
+//  (report/2021-1-84333CF_IFT542_report.md Appendix A) promised but never built:
 //
 //    T1  session revocation + runbook          ir/revoke-sessions.mjs
 //    T9  invalidate sessions on leak           ir/rotate-secrets.mjs

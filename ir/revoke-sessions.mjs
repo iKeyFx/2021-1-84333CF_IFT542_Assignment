@@ -1,7 +1,7 @@
 // ============================================================================
 //  ir/revoke-sessions.mjs — containment: kill authenticated sessions
 //  [DELIVERED — Task 3 item 26]  Closes the T1 corrective control
-//  ("session revocation + runbook") promised in report/task1-threat-model.md §3.
+//  ("session revocation + runbook") promised in report/2021-1-84333CF_IFT542_report.md Appendix A.
 //
 //  WHY THIS IS THE FIRST CONTAINMENT STEP:
 //  T1 (SQL-injection auth bypass) hands the attacker a *session*, not a

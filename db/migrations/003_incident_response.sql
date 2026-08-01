@@ -2,7 +2,7 @@
 --  IFT542 — Migration 003: incident-response schema
 --  [DELIVERED — Task 3 item 26: corrective controls]
 --
---  The risk register (report/task1-threat-model.md §3) promised four CORRECTIVE
+--  The risk register (report/2021-1-84333CF_IFT542_report.md Appendix A) promised four CORRECTIVE
 --  controls that the hardening tasks never actually built. This migration adds
 --  the two tables they need; the commands themselves live in ir/.
 --

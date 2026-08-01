@@ -1,149 +1,40 @@
-# Evidence — Task 3 (application & configuration security)
+# Evidence — Task 3
 
-Start the stack (`npm run db:reset`, then `npm run dev`) before reproducing.
+Records the application and configuration hardening — XSS, CSRF, SSRF, security headers and configuration, structured logging — and the incident-response controls delivered under item 26.
 
-**Before / after.** The vulnerable baseline is tag `v1-hardened-task2`; its capture is
-`run-output.txt`. The hardened capture is `run-output-after.txt`. Code diff:
-
-```
-git diff v1-hardened-task2 v2-hardened-task3
-```
-
-> **Capture §4 against a production build.** The strict CSP (no `unsafe-inline`, no
-> `unsafe-eval`) only applies in production. `npm run dev` deliberately relaxes it for webpack
-> HMR. Use `npm run build && npm start` for the header screenshot.
-
----
-
-## 1. Stored XSS — payload rendered inert
-- Run: `npx vitest run tests/xss-encoding.test.ts` (the five payloads are declared inline in that
-  file; the standalone `xss-payload.txt` was removed before submission).
-- Steps: log in → `/profile` → set display name to
-  `<img src=x onerror="alert('xss-on-dashboard')">` → save → load `/dashboard`.
-- **Before:** the script executed; `dangerouslySetInnerHTML` injected it as raw markup.
-- **After:** the payload is displayed as literal text. No alert fires.
-- **Capture both halves.** The database still holds the payload verbatim:
-  ```
-  docker compose exec postgres psql -U ift542 -d ift542 \
-    -c "SELECT display_name FROM profiles WHERE email='ada.learner@campus.local';"
-  ```
-  while the served HTML contains only `&lt;img …`. Showing only the escaped output would look
-  identical if the app had silently stripped the input — a weaker control. Storing it intact and
-  escaping on output is what contextual output encoding means.
-- Automated: `tests/xss-encoding.test.ts`.
-
-## 2. CSRF — forged cross-site POST rejected
-- Run: `npx vitest run tests/csrf.test.ts`. (The hand-written `csrf-poc.html` page was removed
-  before submission; the test drives the same three requests and additionally reads the database
-  after each one to prove nothing changed.)
-- **Before:** the display name and bio changed with no token.
-- **After:** `403`, and the profile is unchanged. A forged cross-site POST fails on **three**
-  independent grounds: no CSRF token, `Origin: null` (what a `file://` page sends), and
-  `SameSite=Lax` on the session cookie. The test exercises each in isolation so the layering is
-  visible.
-- Also show the cookie in devtools (Application → Cookies): it now has `HttpOnly`, `SameSite=Lax`
-  and `Secure`. **This is also the check for `Secure` over `http://127.0.0.1`** — browsers treat
-  loopback as a trustworthy origin, but confirm the cookie is actually stored rather than assuming.
-- Automated: `tests/csrf.test.ts` — each rejection is paired with a DB read proving the state did
-  not change.
-
-## 3. SSRF — internal destinations refused
-- Run: `npx vitest run tests/ssrf-guard.test.ts` (it authenticates and fetches a CSRF token first;
-  without that a request is refused by the CSRF check before ever reaching the SSRF guard, which
-  would prove the wrong thing).
-- Or in the UI: `/admin/url-preview` → `http://127.0.0.1:3000/login` → Preview.
-- **Before:** `[SSRF CONFIRMED]` — the server fetched the internal URL and returned its body.
-- **After:** `403 {"ok":false,"error":"URL not allowed"}` and `[SSRF BLOCKED]`.
-- Capture the matrix in `run-output-after.txt` §3: loopback, `localhost`, `169.254.169.254`,
-  10/8, 172.16/12, 192.168/16, `file://`, a non-allowlisted host and `[::1]`. **Every response body
-  is identical** — a distinct reason would let an admin map the internal network.
-- Automated: `tests/ssrf-guard.test.ts` (runs offline via an injected resolver).
-
-## 4. Security misconfiguration
-- **Headers** (production build):
-  ```
-  npm run build && npm start
-  curl -I http://127.0.0.1:3000/login
-  ```
-  Capture CSP (with `'nonce-…'`, no `unsafe-*`), HSTS, `X-Content-Type-Options`,
-  `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy`. **Before:** all absent.
-- **Config** — `src/lib/config.ts`: `DEBUG` is now opt-in (`=== "true"`), `SESSION_SECRET` has no
-  committed fallback and throws in production, `DEFAULT_ADMIN` is deleted,
-  `productionBrowserSourceMaps` is `false`.
-- **Default admin rotated** — capture both:
-  ```
-  admin@campus.local + rotated password -> 200
-  admin@campus.local + admin123         -> 401
-  ```
-- **Dependencies** — `npm audit` before/after: 1 critical + 1 high → 1 high. Record the residual
-  honestly; the remaining `next` advisory has no fix inside the 14.2 line.
-
-## 5. Security logging (threat T4)
-- The Task 1 worksheet lists T4 as *"no security logging in baseline (added only in Task 3)"*.
-  This is that deliverable — there was **no** logging item in this file before.
-- Trigger the three required event types and capture the JSON lines from the server's stdout:
-  ```
-  # failed-login
-  curl -s -X POST http://127.0.0.1:3000/api/login -H 'Content-Type: application/json' \
-    -d '{"email":"ada.learner@campus.local","password":"wrong-password"}'
-
-  # rejected-validation
-  curl -s -X POST http://127.0.0.1:3000/api/login -H 'Content-Type: application/json' \
-    -d '{"email":"not-an-email","password":"whatever1"}'
-
-  # denied-authorization — log in as a STUDENT, then POST to an admin endpoint
-  ```
-- Expected: one JSON object per line, each with `ts`, `level`, `event`, `actor` (`profile_id` +
-  `role`, or `type:"anonymous"`), `ip`, `method`, `path`, `outcome`, `reason`.
-- **Check the redaction**: emails appear masked (`a***@campus.local`), and no password, hash,
-  session id or CSRF token appears anywhere. Samples are in `run-output-after.txt` §5.
-- Automated: `tests/logging.test.ts`.
-
----
-
-## Capture scripts
-
-Two deliverables are awkward to capture by hand, so each has a script. Both are read-only
-demonstrations against localhost; neither is attack tooling.
-
-| Script | Captures | Why it exists |
+| File | What it shows | Assignment item |
 |---|---|---|
-| `node evidence/task3/capture-security-logs.mjs` | Screenshot 21 | Triggers one of each required event. The `authz.denied` case needs a **logged-in student** posting to an admin endpoint — anonymous logs `no-session` instead, which is the wrong event |
+| `15-xss-neutralised.png` | `/dashboard` rendering `<img src=x onerror="alert('xss-on-dashboard')">` as literal text with no alert firing, beside the psql query proving the row still holds the payload verbatim | Deliverable 1 — XSS neutralised by output encoding |
+| `16-csrf-rejected.png` | The browser's Network tab: a cross-site POST to `/api/profile` answered `303 → /login`, with `/dashboard` still showing the real display name — `SameSite=Lax` stopping the cookie before the request can be judged by the inner layers | Deliverable 2 — CSRF layer 1 (`SameSite`) |
+| `16b-csrf-rejected.png` | The same forged requests from a Node client, which does not implement `SameSite`: `403` with `csrf.rejected reason:"bad-origin"`, `403` with `reason:"missing-token"`, a tampered signature also `403`, the legitimate control request accepted as `303 /profile?saved=1`, and the database read proving no forged write landed | Deliverable 2 — CSRF layers 2 and 3 (Origin check, signed token) |
+| `17-cookie-flags.png` | The devtools cookie row for `sid` with `HttpOnly`, `Secure` and `SameSite=Lax` set — also the only proof that `Secure` is accepted over `http://127.0.0.1`. Cookie values are blurred; the flags are not | Deliverable 2 — session-cookie attributes |
+| `18-ssrf-blocked.png` | The URL-preview endpoint refusing loopback, `localhost`, `169.254.169.254`, RFC1918 ranges, `file://` and non-allowlisted hosts, every blocked body the identical `403 {"ok":false,"error":"URL not allowed"}` | Deliverable 3 — SSRF blocked |
+| `19-security-headers.png` | The production response headers: CSP with a per-request `'nonce-…'` and no `unsafe-` token, plus HSTS, `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy` and `Permissions-Policy` — all absent in the baseline | Deliverable 4 — security headers and configuration |
+| `21-security-logs.png` | The server's stdout carrying `auth.login.failed`, `validation.rejected`, `auth.login.succeeded` and `authz.denied` as JSON lines, each with `ts`, `level`, `event`, `actor`, `ip`, `method`, `path`, `outcome` and `reason`, and the email masked to `a***@campus.local` | Deliverable 5 — structured logging, redacted |
+| `22-tests-green.png` | `Test Files 11 passed (11)` and `Tests 183 passed \| 1 skipped (184)` — the submitted build's full suite | Item 26 — defensive test results |
+| `run-output.txt` | The baseline transcript at `v1-hardened-task2`: SSRF fetching an internal URL, the XSS payload executing, the forged POST accepted, and all six headers absent | Deliverables 1–5 — the "before" record |
+| `run-output-after.txt` | The hardened transcript: §1 XSS inert, §2 CSRF rejected, §3 the SSRF matrix, §4 headers and configuration, §4e the `Referrer-Policy` browser fix, §5 redacted log samples, §6 test results, §7–§9 the incident-response cycle and the persisted `ir.*` audit records | Deliverables 1–5 and item 26 — the "after" record |
 
-Screenshot **16b** (CSRF layers 2 and 3) is reproduced with `npx vitest run tests/csrf.test.ts`.
-A Node client does not implement `SameSite`, so the session cookie goes through and the Origin
-check and the signed token can each be seen failing on their own — a browser cannot show them,
-because it is stopped by `SameSite` first (that is screenshot 16). The standalone
-`capture-csrf-layers.mjs` script the existing capture was taken with was removed before
-submission along with the other proof-of-concept payloads.
+## Reproduce
 
-For 21 you need two terminals: `npm run dev` in one (screenshot **that** one), the script in the
-other. See `SUBMISSION.md` → *Capturing 21*.
+```bash
+npm run db:reset                                  # Postgres up + migrate + seed
+npm test                                          # 183 passed | 1 skipped (184) across 11 files
+npx vitest run tests/xss-encoding.test.ts         # payload stored verbatim, served escaped
+npx vitest run tests/csrf.test.ts                 # missing, tampered and foreign tokens all 403
+npx vitest run tests/ssrf-guard.test.ts           # the full IP-range matrix, refused identically
+npx vitest run tests/security-headers.test.ts     # CSP nonce, static headers, cookie attributes
+npx vitest run tests/logging.test.ts              # event shape, masking, deny-listed fields dropped
+npx vitest run tests/incident-response.test.ts    # the four corrective controls, via the real ir/ scripts
+npm run build && npm start                        # the production build the strict CSP applies to
+curl -I http://127.0.0.1:3000/login               # the header set in 19-security-headers.png
+npm run ir:status                                 # read-only: live sessions, locked accounts, audit health
+npm run ir:audit-log -- --verify                  # security_events refuses UPDATE/DELETE/TRUNCATE (42501)
+git diff v1-hardened-task2 v2-hardened-task3
+docker compose exec postgres psql -U ift542 -d ift542 \
+  -c "SELECT display_name FROM profiles WHERE email='ada.learner@campus.local';"
+```
 
-## Regression check — Task 1 and Task 2 must stay intact
+The incident record is `report/incident-record.md` (`INC-2026-001`, an authorised simulated exercise) and the six-stage response runbook is `report/incident-runbook.md`.
 
-- `npx vitest run tests/sqli-parameterized.test.ts` → injection strings bound as data: generic
-  `401`, no session, zero rows matched.
-- `npx vitest run tests/auth-login.test.ts` → identical replies for unknown email and wrong
-  password, body keys `['error']`.
-- `npm test` → `183 passed | 1 skipped (184)` across 11 files. The skip is the live-network SSRF
-  test, gated behind `ALLOW_NETWORK_TESTS=1`.
-- `db/migrations/001_init.sql` unchanged, so the Task 1 citation of `001_init.sql:29` still resolves.
-
----
-
-## Item 26 — incident response
-
-Added after the five deliverables above. See `SUBMISSION.md` → *Evidence item 26* for the full
-map, and `run-output-after.txt` §8–§9 for the captures.
-
-- `report/incident-record.md` — `INC-2026-001` (authorised **simulated** exercise; the record
-  says so in a banner at the top).
-- `report/incident-runbook.md` — the one-page six-stage runbook (Preparation → Lessons Learned).
-  Long form, with every quoted command executed and its real output pasted:
-  `report/appendix/response-runbook.md`.
-- `ETHICS.md` → *Declaration* — sign by hand; ID and course are pre-filled.
-- `npm run ir:status` · `ir:revoke-sessions` · `ir:force-reset` · `ir:rotate-secrets` ·
-  `ir:audit-log` — the four corrective controls from the risk register, now runnable.
-- `npm run ir:audit-log -- --verify` → all 7 checks pass; `security_events` refuses UPDATE,
-  DELETE, zero-row DELETE and TRUNCATE with SQLSTATE `42501`.
+> **Note.** All data is fictitious — invented names, the non-routable `@campus.local` domain, no PII (see `ETHICS.md`) — and the log samples are masked by `src/lib/logger.ts` itself. The cookie values in `17-cookie-flags.png` are blurred on both the `sid` and `csrf` rows, because the CSRF token contains the session id before its dot; `npm run ir:rotate-secrets` output is never screenshotted, since it prints a live password and `SESSION_SECRET` unmasked. The standalone proof-of-concept scripts were deleted before submission — the coursework forbids submitting reusable attack payloads — so the `run-output.txt` transcripts and the terminal in `16b-csrf-rejected.png` name files no longer in the tree; those records are left unedited, and every assertion they made now lives in the Vitest files above.

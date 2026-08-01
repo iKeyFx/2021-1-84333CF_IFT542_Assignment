@@ -1,7 +1,7 @@
 // ============================================================================
 //  ir/audit-log.mjs — append-only audit retention
 //  [DELIVERED — Task 3 item 26]  Closes the T4 corrective control
-//  ("append-only retention") from report/task1-threat-model.md §3.
+//  ("append-only retention") from report/2021-1-84333CF_IFT542_report.md Appendix A.
 //
 //  T4 is "unattributable actions": in the v0 build nothing was logged, so the
 //  intrusion documented in report/incident-record.md could not be detected at

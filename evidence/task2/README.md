@@ -1,180 +1,31 @@
-# Evidence — Task 2 (authentication)
+# Evidence — Task 2
 
-Planted in `src/app/api/login/route.ts` + `src/lib/`. Start the stack
-(`npm run db:reset` then `npm run dev`) before running the scripts.
+Records the authentication and database hardening: the parameterized login query, Argon2id password storage, and the four supporting controls.
 
-**Before / after.** The vulnerable baseline is tag `v0-vulnerable`; its capture is
-`run-output.txt`. The hardened capture is `run-output-after.txt`.
+| File | What it shows | Assignment item |
+|---|---|---|
+| `login-query-before-after.md` | The login query side by side — the concatenated `sql.unsafe` form at `v0-vulnerable` and the postgres.js tagged template at `v1-hardened-task2` — with file paths and line numbers | Item 16 — before/after code excerpts with file paths |
+| `07-argon2id-hashes.png` | All 7 credential rows prefixed `$argon2id$v=19$m=19456,p=1,t=2$` with visibly different salts, beside `\d credentials` showing no `password` column and the `CHECK (password_hash LIKE '$argon2id$%')` constraint. Digests are truncated by `left(…,46)`, so only the prefix and work factor are visible | Item 17 — database evidence of hashed passwords without exposing credentials |
+| `13-tests-green.png` | The suite as Task 2 closed at tag `v1-hardened-task2`: `Test Files 5 passed (5)`, `Tests 54 passed (54)` across the five Task 2 files | Item 18 — authentication-control test results |
+| `08-sqli-no-bypass.png` | The payload `' OR '1'='1' -- ` submitted to `/api/login` and answered `HTTP status: 401`, `{"error":"Invalid email or password"}`, `Set-Cookie: []`, `[NO BYPASS]` | Item 19 — empirical backing for the parameterization explanation |
+| `run-output.txt` | The baseline transcript at `v0-vulnerable`: the injection authenticating with no valid password, distinct enumeration messages, the `stack`/`query` disclosure, and all 7 passwords readable in cleartext | Items 16–19 — the "before" record |
+| `run-output-after.txt` | The hardened transcript: §1 injection bound as data, §2/§2b Argon2id storage and the migration, §3 one generic 401, §5 rate limiting, §6 session-id regeneration | Items 17–19 — the "after" record |
 
-The side-by-side code excerpt for the login query — the centrepiece of Task 2 — is in
-[`login-query-before-after.md`](login-query-before-after.md). Regenerate the full diff with:
+## Reproduce
 
-```
+```bash
+npm run db:reset                                    # Postgres up + migrate + seed (Argon2id)
+npm test                                            # 183 passed | 1 skipped (184) across 11 files
+npx vitest run tests/sqli-parameterized.test.ts     # injection binds as data, 0 rows matched
+npx vitest run tests/password-storage.test.ts       # every digest is an Argon2id PHC string
+npx vitest run tests/auth-login.test.ts             # unknown email and wrong password reply identically
+npx vitest run tests/rate-limit.test.ts             # 5 failures per IP per 60 s, then 429
+npx vitest run tests/session-regeneration.test.ts   # the presented sid is replaced and deleted
 git diff v0-vulnerable v1-hardened-task2 -- src/app/api/login/route.ts
+docker compose exec postgres psql -U ift542 -d ift542 \
+  -c "SELECT p.email, left(c.password_hash,46) FROM credentials c JOIN profiles p ON p.id=c.profile_id ORDER BY p.id;" \
+  -c "\d credentials"
+npm run db:reset:legacy                             # stages the v0 plaintext, then re-hashes it
 ```
 
-> **Plaintext handling.** `run-output.txt` (the v0 capture) deliberately shows cleartext
-> passwords — that *is* the vulnerability evidence. In `run-output-after.txt` the plaintext is
-> redacted, since the point of that file is that plaintext no longer exists. The fictitious demo
-> passwords remain documented in the root `README.md` for reproduction.
-
-> **The v0 proof-of-concept scripts are no longer in the tree.** `sqli-login.mjs`,
-> `enum-and-verbose.mjs`, `ssrf-demo.mjs`, `xss-payload.txt` and `csrf-poc.html` were deleted
-> before submission, because the coursework forbids submitting reusable attack payloads. The
-> captured transcripts below still name them — those files are unedited records of commands
-> actually run, and editing them would falsify the evidence. Every assertion they made is now
-> covered by the Vitest suite, which additionally reads the database after each rejection.
-
----
-
-# Screenshots to capture
-
-> **For submission you need two: 07 and 13** (optionally 08). See
-> [`SUBMISSION.md`](SUBMISSION.md) for the mapping to evidence items 16–19. The rest of this table
-> exists for reproducibility and marker spot-checks — capture them if you want the fuller record,
-> but they are not required.
-
-Naming follows the `evidence/task1/` convention (`NN-name.png`). Task 1 used `01`–`06`, so the
-Task 2 captures continue from `07`. Every command below is also captured as text in
-`run-output-after.txt`, so the screenshots are corroboration, not the only record.
-
-**Setup once, then run the commands in order:**
-
-```bash
-npm run db:reset      # Postgres up + migrate + seed (Argon2id)
-npm run dev           # app on http://127.0.0.1:3000, in its own terminal
-```
-
-| # | File | Command / action | What must be visible in the frame |
-|---|------|------------------|-----------------------------------|
-| 07 **(required)** | `07-argon2id-hashes.png` | <code>docker compose exec postgres psql -U ift542 -d ift542 -c "SELECT p.email, left(c.password_hash,46) FROM credentials c JOIN profiles p ON p.id=c.profile_id ORDER BY p.id;" -c "\d credentials"</code> | All 7 rows prefixed `$argon2id$v=19$m=19456,p=1,t=2$` with **different** salts; and the `credentials` table showing only `profile_id` + `password_hash` (**no** `password` column) plus the `CHECK (password_hash ~~ '$argon2id$%')` constraint |
-| 08 *(recommended)* | `08-sqli-no-bypass.png` | `npx vitest run tests/sqli-parameterized.test.ts` | All 11 assertions green: the generic `401`, no `Set-Cookie`, and the payload matching **0 rows**. *(The existing capture was taken with the since-deleted `sqli-login.mjs`; it shows the same `401` / `Set-Cookie: []` / `[NO BYPASS]` result.)* |
-| 09 | `09-generic-error-ui.png` | In the browser at `/login`, submit a **wrong password** for `ada.learner@campus.local`; then submit a **non-existent** email. Two shots, or one split frame. | The identical red banner `Invalid email or password` in both cases — and **no** `<pre>` stack-trace block, which v0 rendered |
-| 10 | `10-enum-and-verbose.png` | `npx vitest run tests/auth-login.test.ts` | The enumeration assertions green: the unknown-email and wrong-password bodies compared byte-for-byte, and the error body carrying key `error` only — no `stack`, no `query` |
-| 11 | `11-rate-limit.png` | `node evidence/task2/capture-rate-limit.mjs` | Attempts 1–5 → `401`, attempt 6+ → `429` with `Retry-After`, and the "correct password while throttled → 429" line |
-| 12 | `12-session-regeneration.png` | `node evidence/task2/capture-session-regen.mjs` | Planted sid ≠ issued sid, and `planted sid in DB: 0 rows` |
-| 13 **(required)** | `13-tests-green.png` | `npm test` | `Test Files 11 passed (11)` and `Tests 183 passed \| 1 skipped (184)`. *(The existing capture predates Task 3 and shows the then-current 5 files / 54 tests — re-shoot it if you want the final totals in frame.)* |
-| 14 | `14-migration-rehash.png` | `npm run db:reset:legacy` | The `before:` pane (plaintext), then `re-hashed 7`, then the `after:` pane (`$argon2id$…`), then `Credentials: 7 rows, all Argon2id, no plaintext column.` |
-
-**Redaction note for 14.** That capture necessarily shows the fictitious plaintext demo passwords
-in its `before:` pane — that is the migration's input. Either blur those three values before
-submitting, or cite `run-output-after.txt` §2b (already redacted) instead. Do **not** redact
-`run-output.txt`: there the cleartext is the v0 vulnerability evidence.
-
-**Nothing else needs redacting.** All the data in this artefact is fictitious (`@campus.local`,
-invented names, no PII — see `ETHICS.md`). In capture 07 the digests are already truncated by
-`left(...,46)`, so only the `$argon2id$` prefix and the work-factor parameters are visible, never a
-full hash. Captures 08 and 10 show injection payloads and generic errors, which is the point.
-
-Screenshot 09 is the only one needing a browser; the rest are terminal captures.
-
-### If a capture shows a 404 page instead of the expected output
-
-Symptom: a capture command aimed at `/api/login` dumps a raw HTML `404: This page could not be
-found` page instead of the expected JSON.
-
-Cause: a stale `.next` route manifest — the dev server is up and serving pages, but `/api/login`
-is not in its compiled route table. This happens if a previous dev server was force-killed while
-compiling (for example by the Vitest global-setup teardown, which uses `taskkill /T /F`).
-
-Fix — restart the dev server; it recompiles the route:
-
-```bash
-npm run dev
-```
-
-If it persists, clear the build cache first:
-
-```bash
-rm -rf .next && npm run dev      # PowerShell: Remove-Item -Recurse -Force .next
-```
-
-Confirm before re-shooting:
-
-```bash
-curl -s -o nul -w "%{http_code}" -X POST -H "Content-Type: application/json" ^
-  -d "{\"email\":\"ada.learner@campus.local\",\"password\":\"ada-pw-2025\"}" ^
-  http://127.0.0.1:3000/api/login
-```
-
-`200` means the route is live. A `404` means it is still stale — do not take the screenshot yet.
-
----
-
-## 1. SQL injection — auth bypass
-- Run: `npx vitest run tests/sqli-parameterized.test.ts`
-- Or in the UI: log in with email `' OR '1'='1' -- ` and any password.
-- **Before:** authenticated as the first account with no valid password.
-- **After:** `401 {"error":"Invalid email or password"}` and no `Set-Cookie`. The query is a
-  postgres.js tagged template, so the payload binds as `$1` and is compared as a literal email
-  address.
-- Automated: `tests/sqli-parameterized.test.ts` — asserts both the 401 *and* that the payload
-  matched zero rows and left the database untouched.
-
-## 2. Password storage
-- **Before:** the `credentials.password` column stored raw passwords.
-- **After:** `credentials.password_hash` stores an Argon2id PHC string; the plaintext column is
-  dropped and a CHECK constraint enforces the format.
-  ```
-  docker compose exec postgres psql -U ift542 -d ift542 \
-    -c "SELECT p.email, left(c.password_hash,46) FROM credentials c JOIN profiles p ON p.id=c.profile_id;"
-  docker compose exec postgres psql -U ift542 -d ift542 -c "\d credentials"
-  ```
-- Capture: every row prefixed `$argon2id$v=19$m=19456,p=1,t=2$`, distinct salts, and a
-  `credentials` table with no `password` column.
-- **Screenshot to take** (`07-argon2id-hashes.png`, matching the `evidence/task1/` convention):
-  run the two commands above in one terminal and screenshot the combined output. `left(...,46)`
-  truncates each digest so the screenshot shows the `$argon2id$` prefix and parameters without
-  publishing full hashes. The text capture of the same output is in `run-output-after.txt` §2.
-- **The migration itself:** `npm run db:reset:legacy` stages the exact v0 plaintext credentials and
-  then re-hashes them, printing before/after in one command. The default `npm run db:reset` never
-  writes plaintext at any instant. Both end in the same schema — see `db/hash-passwords.mjs`.
-- Automated: `tests/password-storage.test.ts`.
-
-## 3. Verbose DB/stack errors + 4. User enumeration
-- Run: `npx vitest run tests/auth-login.test.ts`
-- **Before:** different messages for unknown vs known email, and a response carrying the raw SQL
-  `query` + `stack` on a forced DB error.
-- **After:** both replies are byte-identical `401 {"error":"Invalid email or password"}`, and the
-  error body has keys `[ 'error' ]` only. The forced-error payload is now rejected by input
-  validation before it reaches the database.
-- Timing was equalised too — an unknown email still costs one full Argon2id verification against a
-  decoy digest (`src/lib/password.ts`), so response time is not an enumeration oracle either.
-- Automated: `tests/auth-login.test.ts` (`expect(unknownBody).toEqual(wrongPwBody)`).
-
-## 5. Rate limiting
-- **Before:** no lockout, delay, or CAPTCHA — attempts could be repeated freely.
-- **After:** 5 failed attempts per IP per 60 s, then `429` with a `Retry-After` header. Only
-  failures count and a success clears the bucket, so mistyping twice then succeeding is never
-  punished. The check runs before any DB or hashing work.
-- Capture: a burst of 8 attempts showing `401 ×5` then `429 ×3`.
-- Automated: `tests/rate-limit.test.ts`.
-
-## 6. Session-id regeneration / session fixation
-- **Before:** `establishSession()` reused a presented `sid` cookie instead of minting a new one.
-- **After:** a fresh UUID is minted on every successful login and the presented id is **deleted**,
-  so an attacker-fixed session cannot survive the authentication boundary.
-- Demo: set a `sid` cookie to a known UUID in devtools, log in, and confirm the cookie value
-  changed and the old id is gone from the `sessions` table.
-- Automated: `tests/session-regeneration.test.ts`.
-
-## Regression check — current (post-Task-3) state
-
-Task 2 hardening was deliberately scoped: at the `v1-hardened-task2` tag the four items below were
-still open, and Task 3 closed them. **Against the submitted build all four are now hardened**, so
-the checks are stated in their current, true form:
-
-- `admin@campus.local` / `admin123` → **`401`**. The default admin password was rotated in Task 3;
-  it now comes from `ADMIN_PASSWORD`, falling back to a documented dummy
-  (`db/hash-passwords.mjs`). Asserted in `tests/auth-login.test.ts`.
-- The session cookie carries **`HttpOnly; SameSite=Lax; Secure`** (`src/lib/session.ts`).
-  Asserted in `tests/security-headers.test.ts`; visible in `evidence/task3/17-cookie-flags.png`.
-- **`DEBUG` is opt-in and off by default** — `src/lib/config.ts` requires the literal string
-  `"true"`, so an unset or malformed value disables it.
-- **SSRF is blocked**: loopback, `localhost`, `169.254.169.254`, RFC1918 ranges, `file://` and
-  non-allowlisted hosts all return `403 {"ok":false,"error":"URL not allowed"}`, with every
-  blocked body identical. Asserted in `tests/ssrf-guard.test.ts`; captured in
-  `evidence/task3/18-ssrf-blocked.png`.
-
-To see the *vulnerable* baseline these checks were written against, check out `v0-vulnerable`
-(or `v1-hardened-task2`) and read `run-output.txt`.
+> **Note.** All data is fictitious — invented names, the non-routable `@campus.local` domain, no PII (see `ETHICS.md`). `run-output.txt` shows cleartext passwords deliberately, because that *is* the v0 vulnerability evidence; `run-output-after.txt` redacts them, because its point is that plaintext no longer exists. Both transcripts also name the standalone proof-of-concept scripts that were deleted before submission — the coursework forbids submitting reusable attack payloads — and the transcripts are left unedited as genuine records of commands actually run, with every assertion they made now covered by the Vitest files above.

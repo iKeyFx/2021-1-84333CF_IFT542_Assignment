@@ -31,3 +31,6 @@ prod.log
 
 # The submission archive is BUILT from the tracked tree; never track it
 2021-1-84333CF_IFT542.zip
+
+# PDF export intermediate — the submitted PDF lives at the repo root
+/report/*.pdf
