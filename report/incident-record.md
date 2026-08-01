@@ -134,7 +134,7 @@ Not "a bug" — four independent failures that happened to compose:
 
 | Phase | Action | Commit / tag | Verified by |
 |---|---|---|---|
-| Eradication | Parameterized the login query; `sql.unsafe()` removed | `d8b532f` `v1-hardened-task2` | `tests/sqli-parameterized.test.ts` (11) |
+| Eradication | Parameterised the login query; `sql.unsafe()` removed | `d8b532f` `v1-hardened-task2` | `tests/sqli-parameterized.test.ts` (11) |
 | Eradication | Argon2id hashing (m=19456, t=2, p=1); plaintext column **dropped**; `CHECK` constraint added | `d8b532f` | `tests/password-storage.test.ts` (13) |
 | Eradication | One generic `401 {"error":"Invalid email or password"}` for every failure mode; timing equalised with a decoy digest | `d8b532f` | `tests/auth-login.test.ts` (19) |
 | Hardening | Per-IP rate limiting; session-ID regeneration on login | `d8b532f` | `rate-limit.test.ts` (7), `session-regeneration.test.ts` (5) |
@@ -197,7 +197,7 @@ closed it. This is the compact register; the full analysis is in the threat mode
 
 | ID | Finding | STRIDE | Risk | Closed in | Control |
 |---|---|---|---|---|---|
-| **T1** | SQL-injection authentication bypass | Spoofing | 25 | `v1` | Parameterized query |
+| **T1** | SQL-injection authentication bypass | Spoofing | 25 | `v1` | Parameterised query |
 | **T9** | Default admin `admin123` + hardcoded `SESSION_SECRET` | EoP | 20 | `v1`/`v2` | Rotation, secret to env, fixation closed |
 | **T5** | Plaintext password storage | Info. disclosure | 20 | `v1` | Argon2id + `CHECK` constraint |
 | **T3** | Stored XSS in display name | Tampering/EoP | 16 | `v2` | Output encoding + nonce CSP |
@@ -214,7 +214,7 @@ closed it. This is the compact register; the full analysis is in the threat mode
 2. **Detection was the real gap.** Every preventive control was missing, but the compounding
    failure was that nothing recorded anything. An attack you cannot see is one you cannot
    scope, contain or prove.
-3. **Patching is not containment.** Parameterizing the query does nothing to the session
+3. **Patching is not containment.** Parameterising the query does nothing to the session
    already issued. The two are separate actions and the second was not possible until
    `v3-incident-response`.
 4. **A leaked secret stays leaked.** `admin123` and the hardcoded `SESSION_SECRET` are in the

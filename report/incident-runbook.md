@@ -38,7 +38,7 @@ anything — `npm run db:reset` would destroy sessions and application state, an
 Revoke sessions first: `npm run ir:revoke-sessions -- --all --incident <id> --yes`. This is the
 step that actually ends the attacker's access, because patching the vulnerability does nothing to
 a session already issued — in `INC-2026-001` the injected session stayed valid for a further 24
-hours after the query was parameterized. If credentials were disclosed, lock the accounts with
+hours after the query was parameterised. If credentials were disclosed, lock the accounts with
 `npm run ir:force-reset -- --require --all --incident <id> --yes`, which also revokes those
 accounts' sessions; a lock that leaves live sessions authenticated is theatre. Scope down to
 `--email` or `--role` once the blast radius is known, and confirm containment by replaying a

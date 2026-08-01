@@ -1,13 +1,13 @@
 # Evidence — Task 2
 
-Records the authentication and database hardening: the parameterized login query, Argon2id password storage, and the four supporting controls.
+Records the authentication and database hardening: the parameterised login query, Argon2id password storage, and the four supporting controls.
 
 | File | What it shows | Assignment item |
 |---|---|---|
 | `login-query-before-after.md` | The login query side by side — the concatenated `sql.unsafe` form at `v0-vulnerable` and the postgres.js tagged template at `v1-hardened-task2` — with file paths and line numbers | Item 16 — before/after code excerpts with file paths |
 | `01-argon2id-hashes.png` | All 7 credential rows prefixed `$argon2id$v=19$m=19456,p=1,t=2$` with visibly different salts, beside `\d credentials` showing no `password` column and the `CHECK (password_hash LIKE '$argon2id$%')` constraint. Digests are truncated by `left(…,46)`, so only the prefix and work factor are visible | Item 17 — database evidence of hashed passwords without exposing credentials |
 | `03-tests-green.png` | The suite as Task 2 closed at tag `v1-hardened-task2`: `Test Files 5 passed (5)`, `Tests 54 passed (54)` across the five Task 2 files | Item 18 — authentication-control test results |
-| `02-sqli-no-bypass.png` | The payload `' OR '1'='1' -- ` submitted to `/api/login` and answered `HTTP status: 401`, `{"error":"Invalid email or password"}`, `Set-Cookie: []`, `[NO BYPASS]` | Item 19 — empirical backing for the parameterization explanation |
+| `02-sqli-no-bypass.png` | The payload `' OR '1'='1' -- ` submitted to `/api/login` and answered `HTTP status: 401`, `{"error":"Invalid email or password"}`, `Set-Cookie: []`, `[NO BYPASS]` | Item 19 — empirical backing for the parameterisation explanation |
 | `run-output.txt` | The baseline transcript at `v0-vulnerable`: the injection authenticating with no valid password, distinct enumeration messages, the `stack`/`query` disclosure, and all 7 passwords readable in cleartext | Items 16–19 — the "before" record |
 | `run-output-after.txt` | The hardened transcript: §1 injection bound as data, §2/§2b Argon2id storage and the migration, §3 one generic 401, §5 rate limiting, §6 session-id regeneration | Items 17–19 — the "after" record |
 

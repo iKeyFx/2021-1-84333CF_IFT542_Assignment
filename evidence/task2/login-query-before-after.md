@@ -76,7 +76,7 @@ followed by, at lines 100–112:
 
 What changed:
 
-- **Parameterized.** This is a postgres.js *tagged template*, not a string. The driver sends it
+- **Parameterised.** This is a postgres.js *tagged template*, not a string. The driver sends it
   as an extended query with a `$1` placeholder and ships `input.email` separately as a bound
   parameter. `' OR '1'='1' -- ` is therefore compared as a **literal email address**, matches
   zero rows, and cannot alter the statement's structure. `sql.unsafe` is gone from the handler.
