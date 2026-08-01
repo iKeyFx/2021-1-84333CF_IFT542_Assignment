@@ -6,12 +6,12 @@ Records the six application features working in the `v0-vulnerable` baseline, th
 |---|---|---|
 | `dfd.png` | The data-flow diagram with five trust boundaries — browser ↔ server, server ↔ database, server ↔ external network (P7), server ↔ filesystem, and the admin privilege sub-boundary — with the attacker's entry points as dotted flows | Task 1, item 6 — DFD with trust boundaries |
 | `01-login-student.png` | A student signing in as `ada.learner@campus.local` and landing on the dashboard | Task 1 — baseline feature 1 (student login) |
-| `01-login-admin.png` | The admin signing in as `admin@campus.local` and landing on the admin views | Task 1 — baseline feature 1 (admin login) |
-| `02-profile-update.png` | A display name and bio saved on `/profile`, with the saved banner and the updated value | Task 1 — baseline feature 2 (profile update) |
-| `03-course-register.png` | An enrolment created on `/courses`, with the "Enrolled" badge and the dashboard count increased | Task 1 — baseline feature 3 (course registration) |
-| `04-upload.png` | A fictitious document uploaded on `/uploads` and listed in "Your documents", stored under `./uploads` | Task 1 — baseline feature 4 (document upload) |
-| `05-admin-courses.png` | A course created, edited and deleted on `/admin/courses` | Task 1 — baseline feature 5 (admin course management) |
-| `06-admin-enrolments.png` | The enrolment list on `/admin/enrolments` and an enrolment removed | Task 1 — baseline feature 6 (admin enrolment management) |
+| `02-login-admin.png` | The admin signing in as `admin@campus.local` and landing on the admin views | Task 1 — baseline feature 1 (admin login) |
+| `03-profile-update.png` | A display name and bio saved on `/profile`, with the saved banner and the updated value | Task 1 — baseline feature 2 (profile update) |
+| `04-course-register.png` | An enrolment created on `/courses`, with the "Enrolled" badge and the dashboard count increased | Task 1 — baseline feature 3 (course registration) |
+| `05-upload.png` | A fictitious document uploaded on `/uploads` and listed in "Your documents", stored under `./uploads` | Task 1 — baseline feature 4 (document upload) |
+| `06-admin-courses.png` | A course created, edited and deleted on `/admin/courses` | Task 1 — baseline feature 5 (admin course management) |
+| `07-admin-enrolments.png` | The enrolment list on `/admin/enrolments` and an enrolment removed | Task 1 — baseline feature 6 (admin enrolment management) |
 | `planted-vulns.md` | The flat index of all 13 planted defects with `file:line`, STRIDE id and OWASP 2021 category, each tagged in source with a `// [VULN: …]` marker | Task 1, items 7–8 — source data for the STRIDE worksheet and risk register |
 
 ## Reproduce
