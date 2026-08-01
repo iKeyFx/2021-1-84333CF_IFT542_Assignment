@@ -25,12 +25,12 @@ Five components. Three already existed from the hardening work; two were new.
 
 | # | Component | Artefact | Screenshot? |
 |---|---|---|---|
-| 1 | **Defensive tests** | `npm test` → **182 passed, 1 skipped, 11 files**. `run-output-after.txt` §6. The four corrective controls are covered by `tests/incident-response.test.ts` (25) | **Yes — 22** |
+| 1 | **Defensive tests** | `npm test` → **183 passed, 1 skipped (184), 11 files**. `run-output-after.txt` §6. The four corrective controls are covered by `tests/incident-response.test.ts` (25) | **Yes — 22** |
 | 2 | **Code / configuration evidence** | `evidence/task2/login-query-before-after.md`; `run-output-after.txt` §1–§4; `db/migrations/003_incident_response.sql`; `ir/*.mjs`; `git diff v2-hardened-task3 v3-incident-response` | **Yes — 15–20** |
 | 3 | **Redacted logs** | `run-output-after.txt` §5 (five masked application events) and §9b (the persisted audit records). Emails masked at source by `src/lib/logger.ts`; secret-shaped fields dropped by the logger itself | **Yes — 21, 25** |
 | 4 | **Incident record** | [`report/incident-record.md`](../../report/incident-record.md) — `INC-2026-001`, NIST SP 800-61 lifecycle, findings register | — |
-| 5 | **Response runbook** | [`report/response-runbook.md`](../../report/response-runbook.md) — every command executed once and its real output pasted | **Yes — 23, 24** |
-| 6 | **Signed ethics** | [`ETHICS.md`](../../ETHICS.md) → *Declaration* — 8 clauses + signature block | **Yes — 26** |
+| 5 | **Response runbook** | [`report/incident-runbook.md`](../../report/incident-runbook.md) — the one-page six-stage runbook; long form with every command's real output in [`report/appendix/response-runbook.md`](../../report/appendix/response-runbook.md) | **Yes — 23, 24** |
+| 6 | **Signed ethics** | [`ETHICS.md`](../../ETHICS.md) → *Declaration* — 10 clauses + signature block | **Yes — 26** |
 
 The four corrective controls the risk register promised and had never delivered are now
 runnable commands. `report/task1-threat-model.md` **Appendix D** records them as delivered.
@@ -121,21 +121,21 @@ npm run build && npm start     # for 19 (strict CSP + HSTS)
 | # | File | Command / action | What must be visible |
 |---|------|------------------|----------------------|
 | 15 | `15-xss-neutralised.png` | Browser: `/profile` → set display name to `<img src=x onerror="alert('xss-on-dashboard')">` → save → load `/dashboard`. Then run the psql query below in a terminal. | The dashboard showing the payload **as literal text**, no alert dialog; **and** the psql output proving the DB still holds it verbatim. Both halves in one frame if possible. |
-| 16 | `16-csrf-rejected.png` | Open `evidence/task3/csrf-poc.html` while logged in; show the Network tab. | The POST to `/api/profile` returning **303 → `/login`**, and `/dashboard` still showing the real display name. **Not a 403** — see below |
-| 16b | `16b-csrf-rejected.png` | `node evidence/task3/capture-csrf-layers.mjs` | All three layers: `303` anonymous, `403` bad-origin, `403` missing-token, then the control `303 /profile?saved=1` |
+| 16 — **CSRF layer 1 (browser: `SameSite`)** | `16-csrf-rejected.png` | A cross-origin form POST to `/api/profile` from a `file://` page while logged in; show the Network tab. | The POST to `/api/profile` returning **303 → `/login`**, and `/dashboard` still showing the real display name. **Not a 403** — see below |
+| 16b — **CSRF layers 2 & 3 (Origin check + signed token)** | `16b-csrf-rejected.png` | `npx vitest run tests/csrf.test.ts` | `403` + `csrf.rejected reason:"bad-origin"`, `403` + `reason:"missing-token"`, a tampered signature also `403`, the control request `303 /profile?saved=1`, and the DB read proving no forged write landed |
 | 17 | `17-cookie-flags.png` | Browser devtools → Application → Cookies → `127.0.0.1` | The `sid` cookie row with **HttpOnly ✓, Secure ✓, SameSite = Lax**. This is also the proof that `Secure` works over `http://127.0.0.1`. **Blur the Value column on BOTH `sid` and `csrf`** — see *What to redact* |
-| 18 | `18-ssrf-blocked.png` | `node tests/ssrf-demo.mjs` | `HTTP status of preview call: 403`, `URL not allowed`, and the `[SSRF BLOCKED]` line |
+| 18 | `18-ssrf-blocked.png` | `npx vitest run tests/ssrf-guard.test.ts` | The preview call refused with `403` / `URL not allowed` across the full range matrix — loopback, RFC1918, `169.254.169.254`, `file://`, non-allowlisted hosts — every blocked body identical |
 | 19 | `19-security-headers.png` | `npm run build && npm start`, then `curl -I http://127.0.0.1:3000/login` | CSP with `'nonce-…'` and **no `unsafe-`**, plus HSTS, nosniff, `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy` |
 | 20 | `20-admin-rotated.png` | Two login attempts as `admin@campus.local` | rotated password → `200 … "role":"admin"`; `admin123` → `401 {"error":"Invalid email or password"}` |
 | 21 | `21-security-logs.png` | **Two terminals** — see *Capturing 21* below. T1: `npm run dev`. T2: `node evidence/task3/capture-security-logs.mjs`. Screenshot **T1**. | Three JSON lines: `auth.login.failed`, `validation.rejected`, `authz.denied` — with `email` shown **masked** as `a***@campus.local` |
-| 22 | `22-tests-green.png` | `npm test` | `Test Files 11 passed (11)` and `Tests 182 passed \| 1 skipped (183)` |
+| 22 | `22-tests-green.png` | `npm test` | `Test Files 11 passed (11)` and `Tests 183 passed \| 1 skipped (184)` |
 | 23 | `23-ir-revocation.png` | `npm run ir:status`, then `npm run ir:revoke-sessions -- --all --incident INC-2026-001 --yes`, then `ir:status` again | Sessions listed → `REVOKED n session(s)` → `TOTAL: 0`. Ideally include the `307` from a revoked cookie |
 | 24 | `24-append-only.png` | `npm run ir:audit-log -- --verify` | The full `[PASS]` matrix, `42501` on UPDATE / DELETE / **zero-row DELETE** / TRUNCATE, and `ALL 7 CHECKS PASSED` |
 | 25 | `25-ir-locked-login.png` | Lock an account, then attempt login with the **correct** password alongside a wrong-password attempt | Both `401 {"error":"Invalid email or password"}` — identical. Plus the `auth.login.blocked` line in the server log |
-| 26 | `26-signed-ethics.png` | `ETHICS.md` → *Declaration*, printed and signed | The 8 clauses and the completed signature block (name, date, signature filled in **by hand**) |
+| 26 | `26-signed-ethics.png` | `ETHICS.md` → *Declaration*, printed and signed | The 10 clauses and the completed signature block (name, date, signature filled in **by hand**) |
 
 **Screenshot 22 must be re-shot** if you captured it before item 26 — the count changed from
-157/10 to 182/11.
+157/10 to `183 passed | 1 skipped (184)` across 11 files.
 
 For 23–25, pin the operator identity so the capture does not carry your machine's hostname:
 
@@ -169,9 +169,9 @@ publish a live credential just because that credential happens to be worthless.
 the session id*:
 
 ```
-sid  = 17663e3b-0b02-44f2-8a18-aee89b319f05
-csrf = 17663e3b-0b02-44f2-8a18-aee89b319f05.E03fI0fltBqapLXFgfhTR_g--IinaA8idWlJAChg-WE
-       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the same value, before the dot
+sid  = 17663e3b...redacted
+csrf = 17663e3b...redacted.<HMAC ...redacted>
+       ^^^^^^^^^^^^^^^^^^^ the same value, before the dot
 ```
 
 That is by design — the token is `<sid>.HMAC-SHA256(SESSION_SECRET, sid)`, which is what binds it to
@@ -280,9 +280,10 @@ reaches the token check, so no 403 can be produced. A browser cannot demonstrate
 layers 2 and 3, because a browser will not send the cookie that would let the
 request get far enough to be judged by them.
 
-`capture-csrf-layers.mjs` (screenshot 16b) forces the cookie through with a Node
-client, which does not implement `SameSite`, and shows the inner two layers holding
-on their own. Together the two screenshots show defence in depth:
+`tests/csrf.test.ts` (screenshot 16b) drives the same requests from a Node client,
+which does not implement `SameSite`, so the cookie goes through and the inner two
+layers can each be seen holding on their own. Together the two screenshots show
+defence in depth:
 
 | Layer | Control | Forged request gets |
 |---|---|---|
@@ -297,8 +298,8 @@ with `/dashboard` still showing the real display name.
 
 - **`[SSRF CONFIRMED]` instead of `[SSRF BLOCKED]`** — you are on an old build. Check `git log`.
 - **`Request rejected` instead of `URL not allowed`** in 18 — the CSRF check fired before the SSRF
-  guard, so the script never reached the thing you are trying to prove. `tests/ssrf-demo.mjs`
-  fetches a token first; make sure you are running the current version.
+  guard, so the request never reached the thing you are trying to prove. `tests/ssrf-guard.test.ts`
+  authenticates and fetches a token first; make sure you are running the current version.
 - **CSP contains `unsafe-eval`** in 19 — that is the *development* policy. You either did not run
   `npm run build && npm start`, or you did and **a dev server was still holding port 3000**, so
   `npm start` quietly moved to 3001 and your `curl` hit the old server. See *Two traps* above.

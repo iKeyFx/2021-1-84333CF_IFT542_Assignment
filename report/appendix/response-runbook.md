@@ -1,15 +1,20 @@
-# Incident Response Runbook
+# Incident Response Runbook — long form (appendix)
 
-> **Scope.** This runbook governs the IFT542 Student Registration teaching artefact running on
+> **Superseded as the primary runbook.** The one-page, six-stage runbook submitted for item 25 is
+> [`report/incident-runbook.md`](../incident-runbook.md). This document is retained as an
+> appendix: it is the long-form operational detail — every command with its real captured output,
+> the full detection-trigger table, and the scenario walkthroughs.
+>
+> **Scope.** The IFT542 Student Registration teaching artefact running on
 > `http://127.0.0.1:3000` against a local docker-compose Postgres. **Localhost only, fictitious
-> data only.** See [`ETHICS.md`](../ETHICS.md).
+> data only.** See [`ETHICS.md`](../../ETHICS.md).
 >
 > **Every command in this document has been executed and its real output pasted.** A runbook
 > containing an untested command is worse than no runbook: it fails during the one hour you
 > cannot afford to debug it.
 
 Worked example of these steps against a real (simulated) intrusion:
-[`report/incident-record.md`](incident-record.md).
+[`report/incident-record.md`](../incident-record.md).
 
 ---
 
@@ -444,5 +449,5 @@ npm run ir:audit-log       -- --tail 20                                      # r
 Full regression check after any response:
 
 ```bash
-npm test          # 182 passed | 1 skipped across 11 files
+npm test          # 183 passed | 1 skipped (184) across 11 files
 ```

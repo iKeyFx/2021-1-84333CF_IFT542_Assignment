@@ -62,7 +62,7 @@ npm run dev
 # App: http://127.0.0.1:3000
 
 # 5. Run the full hardening test suite (starts a server itself if one isn't up)
-npm test                        # 182 passed | 1 skipped, across 11 files
+npm test                        # 183 passed | 1 skipped (184), across 11 files
 
 # 6. (optional) inspect the incident-response controls — read-only, safe
 npm run ir:status
@@ -173,8 +173,10 @@ is anonymous; exactly one scope (`--all` / `--email` / `--role`) is mandatory. E
 appends its own `ir.*` record, so the response is audited by the control it administers.
 
 Documents: [`report/incident-record.md`](report/incident-record.md) (`INC-2026-001` — an
-authorised **simulated** exercise), [`report/response-runbook.md`](report/response-runbook.md),
-and Appendix D of [`report/task1-threat-model.md`](report/task1-threat-model.md).
+authorised **simulated** exercise), [`report/incident-runbook.md`](report/incident-runbook.md)
+(the one-page six-stage runbook; long form in
+[`report/appendix/response-runbook.md`](report/appendix/response-runbook.md)), and Appendix D of
+[`report/task1-threat-model.md`](report/task1-threat-model.md).
 
 ### Known residuals (documented, not hidden)
 
@@ -193,6 +195,26 @@ and Appendix D of [`report/task1-threat-model.md`](report/task1-threat-model.md)
   needs an independent off-host sink.
 - Nothing watches the events — there is no alerting.
 
+## The submitted report
+
+The single consolidated report is
+[`report/2021-1-84333CF_IFT542_report.md`](report/2021-1-84333CF_IFT542_report.md) — three task
+sections in the body (10 pages), plus appendices A–D. Export it to PDF with:
+
+```bash
+npx md-to-pdf report/2021-1-84333CF_IFT542_report.md
+cp report/2021-1-84333CF_IFT542_report.pdf 2021-1-84333CF_IFT542.pdf
+# Windows PowerShell:
+#   Copy-Item report\2021-1-84333CF_IFT542_report.pdf 2021-1-84333CF_IFT542.pdf -Force
+```
+
+Build the clean submission archive from the tracked tree only (no `node_modules`, `.next`, logs
+or `.env`):
+
+```bash
+git archive --format=zip -o 2021-1-84333CF_IFT542.zip HEAD
+```
+
 ## Project layout
 
 ```
@@ -201,10 +223,10 @@ src/lib/            db, config, session, auth, password, validate, rate-limit,
                     csrf, url-guard, security-headers, logger
 db/                 migrations/ + seed.sql + hash-passwords.mjs + migrate.mjs runner
 ir/                 incident-response commands (npm run ir:*)
-tests/              Vitest suite (*.test.ts) + the v0 PoC scripts (*.mjs)
-evidence/task1..3/  what to capture per task (+ csrf-poc.html)
-report/             threat model, risk register, OWASP mapping, remediation status,
-                    incident record, response runbook
+tests/              Vitest suite (*.test.ts) — defensive regression tests only
+evidence/task1..3/  screenshots, captured transcripts, and what to capture per task
+report/             consolidated report, threat model, risk register, OWASP mapping,
+                    incident record, incident runbook
 uploads/            runtime file storage (gitignored)
 ```
 
@@ -216,7 +238,7 @@ Remediated issues are tagged in source with `// [FIXED — Task 2: <name>]` or
 mapping, **B** for Task 2 remediation status, **C** for Task 3, and **D** for the corrective
 controls delivered under item 26. Reproduction steps are in
 [`tests/README.md`](tests/README.md) and `evidence/task{1,2,3}/README.md`; response procedures
-are in [`report/response-runbook.md`](report/response-runbook.md).
+are in [`report/incident-runbook.md`](report/incident-runbook.md).
 
 ## Reset / teardown
 

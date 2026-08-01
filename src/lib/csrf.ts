@@ -112,10 +112,10 @@ export async function verifyToken(
 /**
  * Reject a request whose Origin (or Referer) names a different origin, or the
  * literal string "null" — which is what a `file://` page sends, and is exactly
- * what evidence/task3/csrf-poc.html produces.
+ * what a forged cross-site form produces. Covered by tests/csrf.test.ts.
  *
  * A MISSING Origin is allowed. That is a deliberate, documented trade-off:
- * non-browser clients (curl, the Node PoC scripts in tests/) send no Origin at
+ * non-browser clients (curl, Node's fetch) send no Origin at
  * all, and browsers always send one on cross-site POSTs. It does mean a
  * non-browser attacker can skip this check — which is precisely why this is the
  * SECONDARY control and the signed token above is the primary one.

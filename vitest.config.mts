@@ -4,10 +4,10 @@ import { fileURLToPath } from "node:url";
 // ============================================================================
 //  Vitest config for the Task 2 hardening tests.
 //
-//  `include` deliberately matches only *.test.ts, so the hand-written PoC
-//  scripts in tests/ (sqli-login.mjs, enum-and-verbose.mjs, ssrf-demo.mjs)
-//  are NOT picked up — they are the "before" artefacts and are still run
-//  manually with `node tests/<file>.mjs`.
+//  `include` matches only *.test.ts. The hand-written v0 PoC scripts that
+//  used to sit alongside them were removed before submission (the coursework
+//  forbids shipping reusable payloads); their coverage now lives entirely in
+//  the *.test.ts suite — sqli-parameterized, xss-encoding, csrf, ssrf-guard.
 // ============================================================================
 export default defineConfig({
   resolve: {

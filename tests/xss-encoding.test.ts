@@ -14,7 +14,10 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { authenticate, postForm, getPage, freshIp, db, DEMO, type Session } from "./helpers";
 import { DISPLAY_NAME_MAX } from "@/lib/validate";
 
-// Payloads lifted from tests/xss-payload.txt.
+// The five canonical stored-XSS payloads for the display-name field. These are
+// declared here rather than in a separate payload file so the submitted tree
+// carries no standalone payload artefact — each one exists only as the input to
+// an assertion that it renders inert.
 const PAYLOADS = [
   `<img src=x onerror="alert('xss-on-dashboard')">`,
   `<img src=x onerror="document.title='XSS'">`,

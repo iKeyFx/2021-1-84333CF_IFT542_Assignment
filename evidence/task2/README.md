@@ -18,9 +18,12 @@ git diff v0-vulnerable v1-hardened-task2 -- src/app/api/login/route.ts
 > redacted, since the point of that file is that plaintext no longer exists. The fictitious demo
 > passwords remain documented in the root `README.md` for reproduction.
 
-> The `.mjs` scripts below are the **unchanged v0 proof-of-concepts**. Their narration still
-> asserts that the app is vulnerable — read the data they print, not their prose. Their new
-> failure output *is* the after-evidence.
+> **The v0 proof-of-concept scripts are no longer in the tree.** `sqli-login.mjs`,
+> `enum-and-verbose.mjs`, `ssrf-demo.mjs`, `xss-payload.txt` and `csrf-poc.html` were deleted
+> before submission, because the coursework forbids submitting reusable attack payloads. The
+> captured transcripts below still name them — those files are unedited records of commands
+> actually run, and editing them would falsify the evidence. Every assertion they made is now
+> covered by the Vitest suite, which additionally reads the database after each rejection.
 
 ---
 
@@ -45,12 +48,12 @@ npm run dev           # app on http://127.0.0.1:3000, in its own terminal
 | # | File | Command / action | What must be visible in the frame |
 |---|------|------------------|-----------------------------------|
 | 07 **(required)** | `07-argon2id-hashes.png` | <code>docker compose exec postgres psql -U ift542 -d ift542 -c "SELECT p.email, left(c.password_hash,46) FROM credentials c JOIN profiles p ON p.id=c.profile_id ORDER BY p.id;" -c "\d credentials"</code> | All 7 rows prefixed `$argon2id$v=19$m=19456,p=1,t=2$` with **different** salts; and the `credentials` table showing only `profile_id` + `password_hash` (**no** `password` column) plus the `CHECK (password_hash ~~ '$argon2id$%')` constraint |
-| 08 *(recommended)* | `08-sqli-no-bypass.png` | `node tests/sqli-login.mjs` | `HTTP status: 401`, body `{"error":"Invalid email or password"}`, `Set-Cookie: []`, and the final `[NO BYPASS]` line |
+| 08 *(recommended)* | `08-sqli-no-bypass.png` | `npx vitest run tests/sqli-parameterized.test.ts` | All 11 assertions green: the generic `401`, no `Set-Cookie`, and the payload matching **0 rows**. *(The existing capture was taken with the since-deleted `sqli-login.mjs`; it shows the same `401` / `Set-Cookie: []` / `[NO BYPASS]` result.)* |
 | 09 | `09-generic-error-ui.png` | In the browser at `/login`, submit a **wrong password** for `ada.learner@campus.local`; then submit a **non-existent** email. Two shots, or one split frame. | The identical red banner `Invalid email or password` in both cases — and **no** `<pre>` stack-trace block, which v0 rendered |
-| 10 | `10-enum-and-verbose.png` | `node tests/enum-and-verbose.mjs` | Section 1: the unknown-email and known-email lines carrying the **same** message. Section 2: `body keys: [ 'error' ]` — no `stack`, no `query` |
+| 10 | `10-enum-and-verbose.png` | `npx vitest run tests/auth-login.test.ts` | The enumeration assertions green: the unknown-email and wrong-password bodies compared byte-for-byte, and the error body carrying key `error` only — no `stack`, no `query` |
 | 11 | `11-rate-limit.png` | `node evidence/task2/capture-rate-limit.mjs` | Attempts 1–5 → `401`, attempt 6+ → `429` with `Retry-After`, and the "correct password while throttled → 429" line |
 | 12 | `12-session-regeneration.png` | `node evidence/task2/capture-session-regen.mjs` | Planted sid ≠ issued sid, and `planted sid in DB: 0 rows` |
-| 13 **(required)** | `13-tests-green.png` | `npm test` | `Test Files 5 passed (5)` and `Tests 54 passed (54)` |
+| 13 **(required)** | `13-tests-green.png` | `npm test` | `Test Files 11 passed (11)` and `Tests 183 passed \| 1 skipped (184)`. *(The existing capture predates Task 3 and shows the then-current 5 files / 54 tests — re-shoot it if you want the final totals in frame.)* |
 | 14 | `14-migration-rehash.png` | `npm run db:reset:legacy` | The `before:` pane (plaintext), then `re-hashed 7`, then the `after:` pane (`$argon2id$…`), then `Credentials: 7 rows, all Argon2id, no plaintext column.` |
 
 **Redaction note for 14.** That capture necessarily shows the fictitious plaintext demo passwords
@@ -67,8 +70,8 @@ Screenshot 09 is the only one needing a browser; the rest are terminal captures.
 
 ### If a capture shows a 404 page instead of the expected output
 
-Symptom: `node tests/sqli-login.mjs` prints the payload, then dumps a raw HTML `404: This page
-could not be found` page and crashes (the v0 script calls `res.json()` on what it assumes is JSON).
+Symptom: a capture command aimed at `/api/login` dumps a raw HTML `404: This page could not be
+found` page instead of the expected JSON.
 
 Cause: a stale `.next` route manifest — the dev server is up and serving pages, but `/api/login`
 is not in its compiled route table. This happens if a previous dev server was force-killed while
@@ -99,12 +102,12 @@ curl -s -o nul -w "%{http_code}" -X POST -H "Content-Type: application/json" ^
 ---
 
 ## 1. SQL injection — auth bypass
-- Run: `node tests/sqli-login.mjs`
+- Run: `npx vitest run tests/sqli-parameterized.test.ts`
 - Or in the UI: log in with email `' OR '1'='1' -- ` and any password.
 - **Before:** authenticated as the first account with no valid password.
-- **After:** `401 {"error":"Invalid email or password"}`, no `Set-Cookie`, script exits 1 with
-  `[NO BYPASS]`. The query is a postgres.js tagged template, so the payload binds as `$1` and is
-  compared as a literal email address.
+- **After:** `401 {"error":"Invalid email or password"}` and no `Set-Cookie`. The query is a
+  postgres.js tagged template, so the payload binds as `$1` and is compared as a literal email
+  address.
 - Automated: `tests/sqli-parameterized.test.ts` — asserts both the 401 *and* that the payload
   matched zero rows and left the database untouched.
 
@@ -129,7 +132,7 @@ curl -s -o nul -w "%{http_code}" -X POST -H "Content-Type: application/json" ^
 - Automated: `tests/password-storage.test.ts`.
 
 ## 3. Verbose DB/stack errors + 4. User enumeration
-- Run: `node tests/enum-and-verbose.mjs`
+- Run: `npx vitest run tests/auth-login.test.ts`
 - **Before:** different messages for unknown vs known email, and a response carrying the raw SQL
   `query` + `stack` on a forced DB error.
 - **After:** both replies are byte-identical `401 {"error":"Invalid email or password"}`, and the
@@ -155,11 +158,23 @@ curl -s -o nul -w "%{http_code}" -X POST -H "Content-Type: application/json" ^
   changed and the old id is gone from the `sessions` table.
 - Automated: `tests/session-regeneration.test.ts`.
 
-## Regression check — Task 3 must stay reproducible
+## Regression check — current (post-Task-3) state
 
-Task 2 hardening is deliberately scoped. After the change, confirm these still hold:
+Task 2 hardening was deliberately scoped: at the `v1-hardened-task2` tag the four items below were
+still open, and Task 3 closed them. **Against the submitted build all four are now hardened**, so
+the checks are stated in their current, true form:
 
-- `admin@campus.local` / `admin123` still logs in (default admin).
-- The session cookie still has **no** `SameSite` and **no** `Secure` (`evidence/task3/csrf-poc.html`).
-- `DEBUG` still defaults to `true` in `src/lib/config.ts`.
-- `node tests/ssrf-demo.mjs` still reports `[SSRF CONFIRMED]`.
+- `admin@campus.local` / `admin123` → **`401`**. The default admin password was rotated in Task 3;
+  it now comes from `ADMIN_PASSWORD`, falling back to a documented dummy
+  (`db/hash-passwords.mjs`). Asserted in `tests/auth-login.test.ts`.
+- The session cookie carries **`HttpOnly; SameSite=Lax; Secure`** (`src/lib/session.ts`).
+  Asserted in `tests/security-headers.test.ts`; visible in `evidence/task3/17-cookie-flags.png`.
+- **`DEBUG` is opt-in and off by default** — `src/lib/config.ts` requires the literal string
+  `"true"`, so an unset or malformed value disables it.
+- **SSRF is blocked**: loopback, `localhost`, `169.254.169.254`, RFC1918 ranges, `file://` and
+  non-allowlisted hosts all return `403 {"ok":false,"error":"URL not allowed"}`, with every
+  blocked body identical. Asserted in `tests/ssrf-guard.test.ts`; captured in
+  `evidence/task3/18-ssrf-blocked.png`.
+
+To see the *vulnerable* baseline these checks were written against, check out `v0-vulnerable`
+(or `v1-hardened-task2`) and read `run-output.txt`.

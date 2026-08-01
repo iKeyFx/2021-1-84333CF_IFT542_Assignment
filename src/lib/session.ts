@@ -74,8 +74,8 @@ export async function establishSession(
  * [FIXED — Task 3: no SameSite / no Secure on the session cookie]
  * The cookie now carries all four protective attributes:
  *   HttpOnly  — unreadable from JavaScript, so an XSS foothold cannot steal it
- *   SameSite=Lax — not sent on cross-site POSTs, which alone defeats the
- *                  forged form submission in evidence/task3/csrf-poc.html
+ *   SameSite=Lax — not sent on cross-site POSTs, which alone defeats a forged
+ *                  cross-origin form submission (see tests/csrf.test.ts)
  *   Secure    — HTTPS-only. Browsers treat loopback as a potentially
  *               trustworthy origin, so this still works over http://127.0.0.1
  *   Path=/    — scoped to the app

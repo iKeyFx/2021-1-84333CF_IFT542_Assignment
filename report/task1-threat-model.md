@@ -121,8 +121,8 @@ Likelihood (L) and Impact (I) on 1–5; **Risk = L × I**; ranked; control type 
 
 ## Appendix A — OWASP Top 10 (2021) mapping
 
-This appendix folds in the OWASP Top-10 (2021) view (originally drafted in `report/threat-model.md`)
-so the two documents agree. **STRIDE (§2) and the risk register (§3) remain the primary model;** this
+This appendix folds in the OWASP Top-10 (2021) view, so a single document is authoritative.
+**STRIDE (§2) and the risk register (§3) remain the primary model;** this
 is a cross-reference that ties every *planted* vulnerability to its STRIDE threat ID and risk-register
 rank. File:line references match §2 exactly.
 
@@ -258,7 +258,7 @@ the session the attacker was already holding, or the seven passwords already in 
 
 | Threat | Promised in §3 (verbatim) | Delivered as | Command |
 |---|---|---|---|
-| **T1** (rank 1) | `session revocation + runbook (C)` | `ir/revoke-sessions.mjs` + [`report/response-runbook.md`](response-runbook.md) | `npm run ir:revoke-sessions` |
+| **T1** (rank 1) | `session revocation + runbook (C)` | `ir/revoke-sessions.mjs` + [`report/incident-runbook.md`](incident-runbook.md) | `npm run ir:revoke-sessions` |
 | **T9** (rank 2) | `invalidate sessions on leak (C)` | `ir/rotate-secrets.mjs` — rotates passwords **and** `SESSION_SECRET`, revoking sessions | `npm run ir:rotate-secrets` |
 | **T5** (rank 3) | `forced reset on suspected breach (C)` | `ir/force-reset.mjs` + `credential_resets` table + login-handler enforcement | `npm run ir:force-reset` |
 | **T4** (rank 7) | `append-only retention (C)` | `security_events` table with statement-level triggers + `ir/audit-log.mjs` | `npm run ir:audit-log -- --verify` |
@@ -304,7 +304,8 @@ the session the attacker was already holding, or the seven passwords already in 
 | `tests/incident-response.test.ts` | 25 tests: CLI safety contract, revocation (incl. the live 307 probe), the forced-reset oracle checks, and the append-only matrix |
 | `evidence/task3/run-output-after.txt` §7–§8 | Captured output of the full response cycle and the append-only proof |
 | [`report/incident-record.md`](incident-record.md) | `INC-2026-001` — the incident these controls answer |
-| [`report/response-runbook.md`](response-runbook.md) | Step-by-step procedures; every command executed and its real output pasted |
+| [`report/incident-runbook.md`](incident-runbook.md) | The one-page six-stage response runbook |
+| [`report/appendix/response-runbook.md`](appendix/response-runbook.md) | Long form: step-by-step procedures; every command executed and its real output pasted |
 
 ### Honest limitations
 
@@ -329,4 +330,5 @@ the session the attacker was already holding, or the seven passwords already in 
 - [x] Risk = L × I arithmetic correct in every row
 - [x] Residual < initial for every mitigated threat, with reasoning
 - [x] Top-3 justification written (above)
-- [x] Reconcile with Claude Code's `report/threat-model.md` (merge the OWASP mapping in as an appendix so the two documents agree)
+- [x] OWASP Top-10 (2021) mapping merged in as Appendix A, so a single document is authoritative
+      (the earlier standalone `report/threat-model.md` was deleted once its content was folded in)

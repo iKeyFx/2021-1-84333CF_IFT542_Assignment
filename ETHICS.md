@@ -13,10 +13,11 @@ well-established educational projects such as OWASP Juice Shop, WebGoat, and DVW
   port-forwarded, tunnelled, or otherwise exposed to any network or other person.
 - **Fictitious data only.** Every seeded name, email (`@campus.local`), password, course, and
   document is invented. No real personal data is present, and none should ever be entered.
-- **You test only this app.** The scripts in `tests/` and `evidence/task3/csrf-poc.html` are
-  hard-wired to `http://127.0.0.1:3000` and target *this* application. They are single, app-specific
-  reproductions — **not** reusable scanners, exploit kits, or attack tooling, and contain nothing
-  intended for use against any third-party system.
+- **You test only this app.** The tests in `tests/` are hard-wired to `http://127.0.0.1:3000` and
+  target *this* application. They are defensive regression tests asserting that each control holds
+  — **not** reusable scanners, exploit kits, or attack tooling, and they contain nothing intended
+  for use against any third-party system. The standalone proof-of-concept scripts used during
+  development were removed before submission.
 
 ## What this repo intentionally does NOT contain
 
@@ -74,10 +75,12 @@ I declare that, in producing and submitting this coursework artefact:
 3. **Data.** All data in this repository is fictitious. Every name is invented, every address uses
    the non-routable `@campus.local` domain, and no real personal data of any person — myself
    included — was entered, processed or stored.
-4. **No third-party impact.** The proof-of-concept scripts in `tests/`, the incident-response
-   commands in `ir/`, and `evidence/task3/csrf-poc.html` are hard-wired to
-   `http://127.0.0.1:3000`. They are single, application-specific reproductions, not reusable
-   scanners, exploit kits or attack tooling.
+4. **No third-party impact.** The test suite in `tests/`, the evidence-capture scripts under
+   `evidence/`, and the incident-response commands in `ir/` are hard-wired to
+   `http://127.0.0.1:3000`. They are single, application-specific defensive checks, not reusable
+   scanners, exploit kits or attack tooling. **No reusable attack payload is submitted:** the
+   standalone proof-of-concept scripts written against the `v0-vulnerable` baseline were deleted
+   from the submitted tree, and their coverage now lives in the Vitest suite.
 5. **Secrets.** No real credential or secret appears in this repository. The values present in the
    `v0-vulnerable` baseline were planted placeholders forming part of the lesson, and have been
    rotated.
@@ -90,6 +93,14 @@ I declare that, in producing and submitting this coursework artefact:
    have not represented it, and will not represent it, as a real security breach.
 8. **Responsible handling.** I will keep this repository within the coursework context and will not
    redistribute it, or any part of it, for use against systems I am not authorised to test.
+9. **Responsible disclosure.** Had a genuine vulnerability been found in any third-party system, I
+   would have followed responsible-disclosure principles and taken no exploitative action. Every
+   finding recorded here concerns defects I deliberately planted in my own localhost artefact, so
+   no disclosure to any external party was owed or made.
+10. **Own work.** This submission — code, report and evidence — is my own work, produced for this
+    assessment. Sources, standards and reference projects that informed it (OWASP Top-10 2021,
+    the OWASP Password Storage and CSRF Prevention cheat sheets, and the teaching precedent of
+    Juice Shop / WebGoat / DVWA) are cited where used.
 
 | | |
 |---|---|

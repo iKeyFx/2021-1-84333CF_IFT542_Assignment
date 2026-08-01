@@ -16,7 +16,8 @@ git diff v1-hardened-task2 v2-hardened-task3
 ---
 
 ## 1. Stored XSS — payload rendered inert
-- Payloads: `tests/xss-payload.txt`.
+- Run: `npx vitest run tests/xss-encoding.test.ts` (the five payloads are declared inline in that
+  file; the standalone `xss-payload.txt` was removed before submission).
 - Steps: log in → `/profile` → set display name to
   `<img src=x onerror="alert('xss-on-dashboard')">` → save → load `/dashboard`.
 - **Before:** the script executed; `dangerouslySetInnerHTML` injected it as raw markup.
@@ -32,11 +33,14 @@ git diff v1-hardened-task2 v2-hardened-task3
 - Automated: `tests/xss-encoding.test.ts`.
 
 ## 2. CSRF — forged cross-site POST rejected
-- PoC: `evidence/task3/csrf-poc.html`. Log in as a student, then open that file in the same browser.
+- Run: `npx vitest run tests/csrf.test.ts`. (The hand-written `csrf-poc.html` page was removed
+  before submission; the test drives the same three requests and additionally reads the database
+  after each one to prove nothing changed.)
 - **Before:** the display name and bio changed with no token.
-- **After:** `403`, and the profile is unchanged. The PoC fails on **three** independent grounds:
-  no CSRF token, `Origin: null` (what a `file://` page sends), and `SameSite=Lax` on the session
-  cookie. Demonstrate each in isolation so the layering is visible.
+- **After:** `403`, and the profile is unchanged. A forged cross-site POST fails on **three**
+  independent grounds: no CSRF token, `Origin: null` (what a `file://` page sends), and
+  `SameSite=Lax` on the session cookie. The test exercises each in isolation so the layering is
+  visible.
 - Also show the cookie in devtools (Application → Cookies): it now has `HttpOnly`, `SameSite=Lax`
   and `Secure`. **This is also the check for `Secure` over `http://127.0.0.1`** — browsers treat
   loopback as a trustworthy origin, but confirm the cookie is actually stored rather than assuming.
@@ -44,8 +48,9 @@ git diff v1-hardened-task2 v2-hardened-task3
   not change.
 
 ## 3. SSRF — internal destinations refused
-- Run: `node tests/ssrf-demo.mjs` (it now fetches a CSRF token first; without that it is refused by
-  the CSRF check before ever reaching the SSRF guard and would prove the wrong thing).
+- Run: `npx vitest run tests/ssrf-guard.test.ts` (it authenticates and fetches a CSRF token first;
+  without that a request is refused by the CSRF check before ever reaching the SSRF guard, which
+  would prove the wrong thing).
 - Or in the UI: `/admin/url-preview` → `http://127.0.0.1:3000/login` → Preview.
 - **Before:** `[SSRF CONFIRMED]` — the server fetched the internal URL and returned its body.
 - **After:** `403 {"ok":false,"error":"URL not allowed"}` and `[SSRF BLOCKED]`.
@@ -104,17 +109,25 @@ demonstrations against localhost; neither is attack tooling.
 | Script | Captures | Why it exists |
 |---|---|---|
 | `node evidence/task3/capture-security-logs.mjs` | Screenshot 21 | Triggers one of each required event. The `authz.denied` case needs a **logged-in student** posting to an admin endpoint — anonymous logs `no-session` instead, which is the wrong event |
-| `node evidence/task3/capture-csrf-layers.mjs` | Screenshot 16b | Forces the session cookie past `SameSite` so the Origin and token layers can each be seen failing on their own. A browser cannot show them — it is stopped by `SameSite` first |
+
+Screenshot **16b** (CSRF layers 2 and 3) is reproduced with `npx vitest run tests/csrf.test.ts`.
+A Node client does not implement `SameSite`, so the session cookie goes through and the Origin
+check and the signed token can each be seen failing on their own — a browser cannot show them,
+because it is stopped by `SameSite` first (that is screenshot 16). The standalone
+`capture-csrf-layers.mjs` script the existing capture was taken with was removed before
+submission along with the other proof-of-concept payloads.
 
 For 21 you need two terminals: `npm run dev` in one (screenshot **that** one), the script in the
 other. See `SUBMISSION.md` → *Capturing 21*.
 
 ## Regression check — Task 1 and Task 2 must stay intact
 
-- `node tests/sqli-login.mjs` → `[NO BYPASS]` (exit 1).
-- `node tests/enum-and-verbose.mjs` → identical replies, body keys `['error']`.
-- `npm test` → 182 passing, 1 skipped (the live-network SSRF test, gated behind
-  `ALLOW_NETWORK_TESTS=1`), across 11 files.
+- `npx vitest run tests/sqli-parameterized.test.ts` → injection strings bound as data: generic
+  `401`, no session, zero rows matched.
+- `npx vitest run tests/auth-login.test.ts` → identical replies for unknown email and wrong
+  password, body keys `['error']`.
+- `npm test` → `183 passed | 1 skipped (184)` across 11 files. The skip is the live-network SSRF
+  test, gated behind `ALLOW_NETWORK_TESTS=1`.
 - `db/migrations/001_init.sql` unchanged, so the Task 1 citation of `001_init.sql:29` still resolves.
 
 ---
@@ -126,7 +139,9 @@ map, and `run-output-after.txt` §8–§9 for the captures.
 
 - `report/incident-record.md` — `INC-2026-001` (authorised **simulated** exercise; the record
   says so in a banner at the top).
-- `report/response-runbook.md` — every quoted command was executed and its real output pasted.
+- `report/incident-runbook.md` — the one-page six-stage runbook (Preparation → Lessons Learned).
+  Long form, with every quoted command executed and its real output pasted:
+  `report/appendix/response-runbook.md`.
 - `ETHICS.md` → *Declaration* — sign by hand; ID and course are pre-filled.
 - `npm run ir:status` · `ir:revoke-sessions` · `ir:force-reset` · `ir:rotate-secrets` ·
   `ir:audit-log` — the four corrective controls from the risk register, now runnable.

@@ -101,7 +101,7 @@ BEGIN
   RAISE EXCEPTION
     'security_events is append-only; % is not permitted (incident-response control T4)', TG_OP
     USING ERRCODE = 'insufficient_privilege',      -- SQLSTATE 42501
-          HINT    = 'Records may be added but never altered or removed. See report/response-runbook.md.';
+          HINT    = 'Records may be added but never altered or removed. See report/incident-runbook.md.';
   RETURN NULL;
 END;
 $fn$ LANGUAGE plpgsql;

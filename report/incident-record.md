@@ -26,6 +26,12 @@
 | **Remediated in** | `v1-hardened-task2` (`d8b532f`), `v2-hardened-task3` (`9d91d0c`) |
 | **Data involved** | 7 fictitious accounts (6 students + 1 admin). No real PII. |
 
+> **Companion document.** This is the detailed incident *record* (evidence item 26). The
+> six-stage summary of the response process — Preparation, Identification, Containment,
+> Eradication, Recovery, Lessons Learned — is the one-page runbook at
+> [`report/incident-runbook.md`](incident-runbook.md) (item 25); the long-form operational detail
+> is in [`report/appendix/response-runbook.md`](appendix/response-runbook.md).
+
 ---
 
 ## 1. Preparation
@@ -135,7 +141,7 @@ Not "a bug" — four independent failures that happened to compose:
 | Eradication | Output encoding + strict CSP with per-request nonce | `9d91d0c` `v2-hardened-task3` | `tests/xss-encoding.test.ts` (9) |
 | Eradication | Signed double-submit CSRF tokens; `HttpOnly; SameSite=Lax; Secure` | `9d91d0c` | `tests/csrf.test.ts` (18) |
 | Eradication | SSRF allowlist + DNS re-check + per-hop redirect validation | `9d91d0c` | `tests/ssrf-guard.test.ts` (50) |
-| Eradication | Admin credential rotated off `admin123`; secret moved to env; `DEBUG` fail-closed | `9d91d0c` | `tests/security-headers.test.ts` (13) |
+| Eradication | Admin credential rotated off `admin123`; secret moved to env; `DEBUG` fail-closed | `9d91d0c` | `tests/security-headers.test.ts` (14) |
 | **Detection** | Structured JSON-Lines security logging with enforced redaction | `9d91d0c` | `tests/logging.test.ts` (13) |
 | **Response** | Session revocation, secret rotation, forced reset, append-only retention | `0552968` `v3-incident-response` | `tests/incident-response.test.ts` (25) |
 
@@ -167,15 +173,17 @@ npm run ir:status
 ```
 
 Step-by-step form, with expected output and rollback, is in
-[`report/response-runbook.md`](response-runbook.md).
+[`report/appendix/response-runbook.md`](appendix/response-runbook.md).
 
 ### 3.3 Recovery verification
 
-- `node tests/sqli-login.mjs` → `[NO BYPASS]`
-- `node tests/enum-and-verbose.mjs` → identical replies, body keys `['error']`
-- `node tests/ssrf-demo.mjs` → `[SSRF BLOCKED]`
-- `evidence/task3/csrf-poc.html` → `403`, profile unchanged
-- `npm test` → **182 passed | 1 skipped across 11 files**
+- `npx vitest run tests/sqli-parameterized.test.ts` → injection bound as data; generic `401`,
+  no session, zero rows matched
+- `npx vitest run tests/auth-login.test.ts` → identical replies for unknown email and wrong
+  password, body keys `['error']`
+- `npx vitest run tests/ssrf-guard.test.ts` → every internal destination refused, bodies identical
+- `npx vitest run tests/csrf.test.ts` → forged cross-site POST `403`, profile unchanged
+- `npm test` → **`183 passed | 1 skipped (184)` across 11 files**
 
 ---
 
@@ -223,7 +231,7 @@ closed it. This is the compact register; the full analysis is in the threat mode
 | 2 | Build secret rotation (T9 corrective) | **Done** — `ir/rotate-secrets.mjs` |
 | 3 | Build forced credential reset (T5 corrective) | **Done** — `ir/force-reset.mjs` |
 | 4 | Build append-only audit retention (T4 corrective) | **Done** — `ir/audit-log.mjs`, migration 003 |
-| 5 | Write the response runbook | **Done** — `report/response-runbook.md` |
+| 5 | Write the response runbook | **Done** — `report/incident-runbook.md` (one page, six stages); long form in `report/appendix/response-runbook.md` |
 | 6 | Regression-test every control | **Done** — 182 tests, 11 files |
 | 7 | Log aggregation, alert thresholds, on-call rotation | **Not done** — out of scope for a localhost artefact; see runbook §7 |
 | 8 | Self-service password reset over a verified channel | **Not done** — no mail path exists; `--complete` is a documented stand-in, not a reset flow |

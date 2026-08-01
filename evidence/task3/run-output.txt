@@ -15,7 +15,7 @@ Returned body snippet (first 200 chars):
 
 ## Stored-XSS round-trip (payload saved as display name, echoed unescaped on /dashboard)
 ```
-Logged in; cookie: sid=8e5ca923-b9e5-4764-b8ec-49ecfd01270b
+Logged in; cookie: sid=8e5ca923...redacted
 Profile save status: 303 (303 redirect expected)
 Dashboard contains RAW payload unescaped: true
 Dashboard contains ESCAPED (&lt;img) version: false
@@ -25,7 +25,7 @@ Restored display name to 'Ada Learner'.
 
 ## No-SameSite session cookie (Set-Cookie from login has no SameSite attribute)
 ```
-Set-Cookie: sid=a1e20afc-fb96-42dc-abd3-1eeadb858044; Path=/; HttpOnly; Max-Age=86400
+Set-Cookie: sid=a1e20afc...redacted; Path=/; HttpOnly; Max-Age=86400
 ```
 
 # Additional "before" captures (Fri Jul 31 16:05 WCAST 2026)
@@ -63,6 +63,6 @@ The state change succeeded: /dashboard renders the attacker-chosen display name.
 
 ## Session cookie flags (re-confirmed on this build)
 ```
-  sid=b65b2539-295e-421f-ba12-444a2f7d15dc; Path=/; HttpOnly; Max-Age=86400
+  sid=b65b2539...redacted; Path=/; HttpOnly; Max-Age=86400
   -> no SameSite, no Secure
 ```

@@ -7,7 +7,7 @@ Everything here is **hard-wired to `http://127.0.0.1:3000`** and only exercises
 
 ```
 npm run db:reset      # Postgres up + migrate + seed (Argon2id hashes)
-npm test              # 183 tests; starts a dev server itself if one isn't up
+npm test              # 183 passed | 1 skipped; starts a dev server itself if one isn't up
 ```
 
 `npm test` reuses a dev server already listening on `127.0.0.1:3000`, and
@@ -51,12 +51,12 @@ The two extra controls get a file each:
 | `session-regeneration.test.ts` | 5 | 2 | A presented `sid` is destroyed and replaced on login (fixation closed); malformed cookies do not 500 |
 | `xss-encoding.test.ts` | 9 | 3 | Five payloads stored verbatim and rendered inert on `/dashboard` and `/profile`; no executable attribute survives; input bounds are a resource limit, not a filter |
 | `csrf.test.ts` | 18 | 3 | Token issuance and session binding; every protected POST rejects missing/tampered/foreign tokens and hostile Origins; `/api/login` is origin-checked but token-exempt |
-| `security-headers.test.ts` | 13 | 3 | CSP, nonce propagation and per-request uniqueness; static headers on pages and `/api/*`; `buildCsp()` unit-tested for both dev and production |
+| `security-headers.test.ts` | 14 | 3 | CSP, nonce propagation and per-request uniqueness; static headers on pages and `/api/*`; the session cookie's `HttpOnly; SameSite=Lax; Secure`; `buildCsp()` unit-tested for both dev and production |
 | `ssrf-guard.test.ts` | 50 | 3 | The full IP-range matrix offline via an injected resolver, plus the live endpoint; includes the 172.16/12 boundary and IPv4-mapped IPv6 |
 | `logging.test.ts` | 13 | 3 | Event shape, level mapping, email masking, and that secrets are dropped by the logger itself |
 | `incident-response.test.ts` | 25 | 3 (item 26) | The four corrective controls, by running the actual `ir/` scripts: CLI safety contract, revocation (incl. the live 307 probe on a revoked cookie), forced reset proven not to be an oracle, and the append-only matrix |
 
-**Total: 183 (182 passing, 1 skipped) across 11 files.**
+**Total: 184 across 11 files — `183 passed | 1 skipped`.**
 
 One test is skipped by default: the live-network SSRF success path, gated behind
 `ALLOW_NETWORK_TESTS=1` so the suite stays green offline.
@@ -97,47 +97,34 @@ time and `rate-limit.test.ts` — the one file that deliberately exhausts a
 bucket — failed on roughly every other back-to-back `npm test`. See the comment
 block in `helpers.ts`.
 
-## Manual proof-of-concept scripts
+## Reproducing a specific vulnerability
 
-These are the original PoCs, kept as the "before" artefacts. Against the
-hardened build they now demonstrate the *fix* — but `sqli-login.mjs` and
-`enum-and-verbose.mjs` still print their v0 narration claiming the app is
-vulnerable, so read the data they print, not their prose.
-
-Two were edited in Task 3, and both edits are load-bearing:
-`ssrf-demo.mjs` now fetches a CSRF token first (without it the request was
-refused by the CSRF check *before* reaching the SSRF guard, so the script proved
-the wrong thing) and reports `[SSRF BLOCKED]`; all of them set
-`process.exitCode` instead of calling `process.exit()`, because on Windows
-exiting while an undici socket is closing trips a libuv assertion and aborts
-with 127, corrupting the captured output.
+The standalone v0 proof-of-concept scripts (`sqli-login.mjs`,
+`enum-and-verbose.mjs`, `ssrf-demo.mjs`, `xss-payload.txt`, and
+`evidence/task3/csrf-poc.html`) were **removed before submission**: the
+coursework forbids submitting reusable attack payloads. Nothing was lost —
+every assertion they made is covered by the Vitest suite, which additionally
+checks database state after each rejection, something the scripts never did.
 
 ```
 npm run db:reset      # Postgres up + migrate + seed
-npm run dev           # app on http://127.0.0.1:3000
 ```
 
-Then, in another terminal:
-
-| Script | Demonstrates | Task | Against the hardened build |
-| --- | --- | --- | --- |
-| `node tests/sqli-login.mjs` | SQL-injection auth bypass on `/api/login` | 2 | exits 1 with `[NO BYPASS]` — the fix |
-| `node tests/enum-and-verbose.mjs` | User enumeration + verbose DB/stack errors | 2 | identical replies, body keys `[ 'error' ]` — the fix |
-| `node tests/ssrf-demo.mjs` | SSRF via admin URL-preview (server fetches loopback) | 3 | `[SSRF BLOCKED]` (exit 1) — the fix |
-| `tests/xss-payload.txt` | Stored-XSS payloads for the profile display name (manual) | 3 | payloads render as literal text — the fix |
+| Finding | Reproduce with | Asserts |
+| --- | --- | --- |
+| SQL-injection auth bypass on `/api/login` | `npx vitest run tests/sqli-parameterized.test.ts` | generic `401`, no session issued, the payload matches **0 rows**, tables intact |
+| User enumeration + verbose DB/stack errors | `npx vitest run tests/auth-login.test.ts` | unknown-email and wrong-password bodies are byte-identical; body keys are `['error']` only |
+| Stored XSS in the profile display name | `npx vitest run tests/xss-encoding.test.ts` | five payloads stored verbatim in the DB and served escaped on `/dashboard` and `/profile` |
+| CSRF on the authenticated POSTs | `npx vitest run tests/csrf.test.ts` | missing / tampered / foreign tokens and `Origin: null` all `403`, each paired with a DB read |
+| SSRF via the admin URL-preview | `npx vitest run tests/ssrf-guard.test.ts` | loopback, RFC1918, `169.254.169.254`, `file://` and non-allowlisted hosts refused, indistinguishably |
 
 The incident-response commands are **not** PoCs — they are the response side.
-See [`report/response-runbook.md`](../report/response-runbook.md):
+See [`report/incident-runbook.md`](../report/incident-runbook.md):
 
 ```
 npm run ir:status                 # read-only; safe at any time
 npm run ir:audit-log -- --verify  # proves security_events is append-only
 ```
-
-CSRF is demonstrated with `evidence/task3/csrf-poc.html` — open it in a browser
-while logged in (see that file's comments). It now **fails** with a 403 and the
-profile is unchanged, on three independent grounds: no token, `Origin: null`,
-and `SameSite=Lax` on the session cookie.
 
 Before/after captures: `evidence/task2/run-output{,-after}.txt` (Tasks 1-2) and
 `evidence/task3/run-output{,-after}.txt` (Task 3).

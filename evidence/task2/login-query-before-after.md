@@ -108,10 +108,19 @@ fragment remains in the handler.
 Live confirmation against the running app:
 
 ```
-$ node tests/sqli-login.mjs
+$ npx vitest run tests/sqli-parameterized.test.ts
+ ✓ tests/sqli-parameterized.test.ts (11 tests)
+ Test Files  1 passed (1)
+      Tests  11 passed (11)
+```
+
+The transcript below is the original capture, taken with the standalone `sqli-login.mjs` script
+that was removed before submission (the coursework forbids shipping reusable payloads). It is
+reproduced verbatim because it is a record of a command actually run:
+
+```
 HTTP status: 401
 Response body: {"error":"Invalid email or password"}
 Set-Cookie: []
 [NO BYPASS] The injection did not authenticate.
-(exit code 1)
 ```

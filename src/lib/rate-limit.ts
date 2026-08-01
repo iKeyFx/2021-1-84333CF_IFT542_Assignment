@@ -6,7 +6,7 @@
 //  evaluates route modules on hot reload in dev, so plain module state would
 //  silently reset and the limiter would appear not to work.
 //
-//  Design notes (see report/threat-model.md):
+//  Design notes (see report/task1-threat-model.md):
 //   - FAILURES ONLY are counted, and a successful login clears the bucket, so a
 //     legitimate user who mistypes twice and then succeeds is never throttled
 //     while a brute-forcer hits the wall in LOGIN_MAX_ATTEMPTS.

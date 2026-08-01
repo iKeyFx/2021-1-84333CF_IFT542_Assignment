@@ -10,7 +10,7 @@
 //    T5  forced reset on suspected breach      ir/force-reset.mjs
 //    T4  append-only retention                 ir/audit-log.mjs
 //
-//  report/response-runbook.md drives every step through these commands, so a
+//  report/incident-runbook.md drives every step through these commands, so a
 //  responder types a command rather than interpreting a paragraph.
 //
 //  ---- SAFETY CONTRACT (enforced here, uniform across all scripts) ----------

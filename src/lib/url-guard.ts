@@ -125,7 +125,7 @@ export async function assertSafeUrl(
   const hostname = url.hostname.replace(/^\[|\]$/g, ""); // strip IPv6 brackets
 
   // An IP literal never reaches DNS, so check it directly — this is what stops
-  // the `http://127.0.0.1:3000/login` payload in tests/ssrf-demo.mjs.
+  // the `http://127.0.0.1:3000/login` case asserted in tests/ssrf-guard.test.ts.
   if (isIP(hostname)) {
     const verdict = classifyIp(hostname);
     if (verdict) return { ok: false, reason: verdict };

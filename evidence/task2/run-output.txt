@@ -9,7 +9,7 @@ Attempting login WITHOUT valid credentials, using SQLi payload:
 HTTP status: 200
 Response body: {"ok":true,"user":{"id":1,"email":"ada.learner@campus.local","role":"student"}}
 Set-Cookie: [
-  'sid=a74f9d57-5276-461c-a80e-28a720ee05e4; Path=/; HttpOnly; Max-Age=86400'
+  'sid=a74f9d57...redacted; Path=/; HttpOnly; Max-Age=86400'
 ]
 
 [BYPASS CONFIRMED] Logged in as ada.learner@campus.local (role=student) with no valid password — the login query is injectable.

@@ -6,8 +6,13 @@ Drop screenshots / notes in this folder.
 ## What to capture
 
 1. **Login** — sign in as a student (`ada.learner@campus.local` / `ada-pw-2025`)
-   and as the admin (`admin@campus.local` / `admin123`). Screenshot each landing
-   on their dashboard/admin views.
+   and as the admin (`admin@campus.local`, using the password from `ADMIN_PASSWORD`
+   — it falls back to `Adm1n-Str0ng-Dummy-2026-x7QF`, see the root `README.md`).
+   Screenshot each landing on their dashboard/admin views.
+
+   > The v0 baseline seeded the admin as `admin123`. **That password was rotated in Task 3 and is
+   > now rejected with a `401`** (asserted in `tests/auth-login.test.ts`), so use the value above.
+   > The Task 1 captures in this folder were taken against the pre-hardening build.
 2. **Profile update** — change display name + bio on `/profile`, show the saved
    banner and the updated value.
 3. **Course registration** — enrol in a course on `/courses`; show the “Enrolled”

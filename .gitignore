@@ -25,3 +25,9 @@ tsconfig.tsbuildinfo
 Thumbs.db
 server.log
 prod.log
+
+# Agent/editor tooling state — not part of the submission
+.claude/
+
+# The submission archive is BUILT from the tracked tree; never track it
+2021-1-84333CF_IFT542.zip

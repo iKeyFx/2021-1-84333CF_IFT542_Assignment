@@ -183,10 +183,10 @@ A session id is planted in the sessions table and presented as a cookie, as an
 attacker would before handing the victim a link. The victim then logs in
 normally with correct credentials:
 
-  planted  Cookie: sid=1373892c-351d-4d29-80c0-84953262cd14
+  planted  Cookie: sid=1373892c...redacted
   status   200
-  response Set-Cookie: sid=3f01209e-ef61-45fd-8941-1f0c743f194f; Path=/; HttpOnly; Max-Age=86400
-  DB       SELECT 1 FROM sessions WHERE id=1373892c-351d...  ->  0 rows
+  response Set-Cookie: sid=3f01209e...redacted; Path=/; HttpOnly; Max-Age=86400
+  DB       SELECT 1 FROM sessions WHERE id=1373892c...redacted  ->  0 rows
 
 The planted id is destroyed, not re-pointed. In v0 the same id survived login
 and was simply bound to the newly authenticated user. Asserted in

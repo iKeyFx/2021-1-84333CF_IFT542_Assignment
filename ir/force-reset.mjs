@@ -30,7 +30,7 @@
 //  A real deployment issues a single-use, time-limited, signed token over an
 //  independently-verified channel and lets the USER choose a new password; the
 //  operator never learns it. This artefact has no mail path and no reset UI, so
-//  that flow does not exist here. report/response-runbook.md §"What a real
+//  that flow does not exist here. report/appendix/response-runbook.md §"What a real
 //  deployment adds" states the same thing.
 //
 //  Usage:

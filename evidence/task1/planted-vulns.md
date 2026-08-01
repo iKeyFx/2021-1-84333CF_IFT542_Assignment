@@ -36,7 +36,14 @@ admin (#11,#12,#13).
 
 ## Reproduction
 
-Task 2: `node tests/sqli-login.mjs`, `node tests/enum-and-verbose.mjs` (+ `evidence/task2/README.md`).
-Task 3: `node tests/ssrf-demo.mjs`, `tests/xss-payload.txt`, `evidence/task3/csrf-poc.html`
+Task 2: `npx vitest run tests/sqli-parameterized.test.ts tests/auth-login.test.ts`
+(+ `evidence/task2/README.md`).
+Task 3: `npx vitest run tests/ssrf-guard.test.ts tests/xss-encoding.test.ts tests/csrf.test.ts`
 (+ `evidence/task3/README.md`). Captured output: `evidence/task2/run-output.txt`,
 `evidence/task3/run-output.txt`.
+
+> The standalone v0 proof-of-concept scripts these captures were originally taken with
+> (`sqli-login.mjs`, `enum-and-verbose.mjs`, `ssrf-demo.mjs`, `xss-payload.txt`, `csrf-poc.html`)
+> were **removed before submission** — the coursework forbids submitting reusable attack payloads.
+> The transcripts still name them because they are unedited records of commands actually run; the
+> equivalent assertions now live in the Vitest suite listed above.
