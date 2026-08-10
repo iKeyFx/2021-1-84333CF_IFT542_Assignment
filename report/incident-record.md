@@ -23,7 +23,7 @@
 | **Detected** | *Not detected.* Reconstructed after the fact — see §2.1 |
 | **Environment** | `http://127.0.0.1:3000`, local docker-compose Postgres. Localhost only. |
 | **Affected build** | tag `v0-vulnerable` (commit `b42df0a`) |
-| **Remediated in** | `v1-hardened-task2` (`d8b532f`), `v2-hardened-task3` (`9d91d0c`) |
+| **Remediated in** | `v1-hardened-task2` (`71563f7`), `v2-hardened-task3` (`6a69647`) |
 | **Data involved** | 7 fictitious accounts (6 students + 1 admin). No real PII. |
 
 > **Companion document.** This is the detailed incident *record* (evidence item 26). The
@@ -134,15 +134,15 @@ Not "a bug" — four independent failures that happened to compose:
 
 | Phase | Action | Commit / tag | Verified by |
 |---|---|---|---|
-| Eradication | Parameterised the login query; `sql.unsafe()` removed | `d8b532f` `v1-hardened-task2` | `tests/sqli-parameterized.test.ts` (11) |
-| Eradication | Argon2id hashing (m=19456, t=2, p=1); plaintext column **dropped**; `CHECK` constraint added | `d8b532f` | `tests/password-storage.test.ts` (13) |
-| Eradication | One generic `401 {"error":"Invalid email or password"}` for every failure mode; timing equalised with a decoy digest | `d8b532f` | `tests/auth-login.test.ts` (19) |
-| Hardening | Per-IP rate limiting; session-ID regeneration on login | `d8b532f` | `rate-limit.test.ts` (7), `session-regeneration.test.ts` (5) |
-| Eradication | Output encoding + strict CSP with per-request nonce | `9d91d0c` `v2-hardened-task3` | `tests/xss-encoding.test.ts` (9) |
-| Eradication | Signed double-submit CSRF tokens; `HttpOnly; SameSite=Lax; Secure` | `9d91d0c` | `tests/csrf.test.ts` (18) |
-| Eradication | SSRF allowlist + DNS re-check + per-hop redirect validation | `9d91d0c` | `tests/ssrf-guard.test.ts` (50) |
-| Eradication | Admin credential rotated off `admin123`; secret moved to env; `DEBUG` fail-closed | `9d91d0c` | `tests/security-headers.test.ts` (14) |
-| **Detection** | Structured JSON-Lines security logging with enforced redaction | `9d91d0c` | `tests/logging.test.ts` (13) |
+| Eradication | Parameterised the login query; `sql.unsafe()` removed | `71563f7` `v1-hardened-task2` | `tests/sqli-parameterized.test.ts` (11) |
+| Eradication | Argon2id hashing (m=19456, t=2, p=1); plaintext column **dropped**; `CHECK` constraint added | `71563f7` | `tests/password-storage.test.ts` (13) |
+| Eradication | One generic `401 {"error":"Invalid email or password"}` for every failure mode; timing equalised with a decoy digest | `71563f7` | `tests/auth-login.test.ts` (19) |
+| Hardening | Per-IP rate limiting; session-ID regeneration on login | `71563f7` | `rate-limit.test.ts` (7), `session-regeneration.test.ts` (5) |
+| Eradication | Output encoding + strict CSP with per-request nonce | `6a69647` `v2-hardened-task3` | `tests/xss-encoding.test.ts` (9) |
+| Eradication | Signed double-submit CSRF tokens; `HttpOnly; SameSite=Lax; Secure` | `6a69647` | `tests/csrf.test.ts` (18) |
+| Eradication | SSRF allowlist + DNS re-check + per-hop redirect validation | `6a69647` | `tests/ssrf-guard.test.ts` (50) |
+| Eradication | Admin credential rotated off `admin123`; secret moved to env; `DEBUG` fail-closed | `6a69647` | `tests/security-headers.test.ts` (14) |
+| **Detection** | Structured JSON-Lines security logging with enforced redaction | `6a69647` | `tests/logging.test.ts` (13) |
 | **Response** | Session revocation, secret rotation, forced reset, append-only retention | `0552968` `v3-incident-response` | `tests/incident-response.test.ts` (25) |
 
 ### 3.2 The response, replayed with the tooling that now exists
