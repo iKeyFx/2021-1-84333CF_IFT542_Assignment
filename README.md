@@ -18,7 +18,7 @@ correctly rejected.
 | Artefact | Location |
 |---|---|
 | Consolidated report | `report/2021-1-84333CF_IFT542_report.md` — Tasks 1–3 plus Appendices A–D |
-| Exported report | `2021-1-84333CF_IFT542.pdf` |
+| Exported report | `2021-1-84333CF_IFT542_Technical_Report.pdf` |
 | Screenshots and transcripts | `evidence/task1/`, `evidence/task2/`, `evidence/task3/` |
 | Incident record and runbook | `report/incident-record.md`, `report/incident-runbook.md` |
 | Ethics declaration | `ETHICS.md` |
@@ -94,7 +94,7 @@ npm run report:pdf
 ```
 
 That renders `report/2021-1-84333CF_IFT542_report.md` and places the result at the repository root
-as `2021-1-84333CF_IFT542.pdf`.
+as `2021-1-84333CF_IFT542_Technical_Report.pdf`.
 
 ## Build the submission archive
 

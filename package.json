@@ -21,7 +21,7 @@
     "ir:audit-log": "node ir/audit-log.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
-    "report:pdf": "npx --yes md-to-pdf report/2021-1-84333CF_IFT542_report.md && node -e \"require('fs').renameSync('report/2021-1-84333CF_IFT542_report.pdf','2021-1-84333CF_IFT542.pdf')\""
+    "report:pdf": "npx --yes md-to-pdf report/2021-1-84333CF_IFT542_report.md && node -e \"require('fs').renameSync('report/2021-1-84333CF_IFT542_report.pdf','2021-1-84333CF_IFT542_Technical_Report.pdf')\""
   },
   "dependencies": {
     "argon2": "0.45.1",
